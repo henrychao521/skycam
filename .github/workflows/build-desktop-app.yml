@@ -52,12 +52,12 @@ jobs:
             sleep 2
           done
           cat state.json || true; echo; tail -20 smoke.log || true; tail -20 ./smoke/skydiary.log 2>/dev/null || true
-          if [ $ok = 1 ]; then curl -s --max-time 5 http://127.0.0.1:18765/ | grep -q "天空日記觀察站" || ok=0; fi
+          if [ $ok = 1 ]; then curl -s --max-time 5 -o home.html http://127.0.0.1:18765/ && grep -q "天空日記觀察站" home.html || ok=0; fi
           curl -s --max-time 5 -X POST -H "Content-Type: application/json" -d '{}' http://127.0.0.1:18765/api/quit || true
           sleep 2
           kill $PID 2>/dev/null || true
           if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM SkyDiary.exe 2>/dev/null || true; fi
-          rm -rf ./smoke smoke.log state.json
+          rm -rf ./smoke smoke.log state.json home.html
           [ $ok = 1 ]
       - name: 壓縮
         working-directory: app/dist
