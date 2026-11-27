@@ -15,7 +15,7 @@ jobs:
         include:
           - os: windows-latest
             artifact: SkyDiary-Windows
-          - os: macos-14          # Apple 晶片（M1 以後）
+          - os: macos-15          # Apple 晶片（M1 以後）
             artifact: SkyDiary-macOS-AppleSilicon
           - os: macos-15-intel    # Intel Mac
             artifact: SkyDiary-macOS-Intel
