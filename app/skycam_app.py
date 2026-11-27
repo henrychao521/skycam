@@ -1351,6 +1351,12 @@ def main(argv: list[str] | None = None) -> None:
             sys.stdout = log_file
         if sys.stderr is None:
             sys.stderr = log_file
+    # Windows 主控台常是 cp1252／cp950，印中文會出錯當掉；一律改成 UTF-8，印不出來的字用 ? 代替
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
     bundled_ffmpeg = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "ffmpeg_bin"
     if bundled_ffmpeg.is_dir():          # 安裝版內附 ffmpeg（做縮時影片用），不必另外安裝
         os.environ["PATH"] = str(bundled_ffmpeg) + os.pathsep + os.environ.get("PATH", "")
