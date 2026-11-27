@@ -26,7 +26,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: 安裝套件
-        run: python -m pip install --upgrade pip numpy pillow pyinstaller==6.11.1 imageio-ffmpeg==0.6.0
+        run: python -m pip install --upgrade pip "numpy==2.4.*" "pillow==11.*" pyinstaller==6.22.3 pyinstaller-hooks-contrib==2026.10 imageio-ffmpeg==0.6.0
       - name: 打包
         working-directory: app
         shell: bash
@@ -38,6 +38,18 @@ jobs:
           python -m PyInstaller --noconfirm --clean --name "SkyDiary" --windowed \
             --add-data "ui.html${SEP}." --add-binary "ffmpeg_bin/ffmpeg${EXE}${SEP}ffmpeg_bin" \
             --hidden-import skycam_tool skycam_app.py
+      - name: 冒煙測試（真的啟動打包好的程式並查狀態）
+        working-directory: app/dist
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN=./SkyDiary/SkyDiary.exe; else BIN=./SkyDiary.app/Contents/MacOS/SkyDiary; fi
+          "$BIN" --no-browser --port 18765 --data ./smoke > smoke.log 2>&1 &
+          for i in $(seq 1 30); do curl -s http://127.0.0.1:18765/api/state > state.json && grep -q '"version"' state.json && break; sleep 2; done
+          cat state.json; echo; cat smoke.log | tail -20
+          grep -q '"version"' state.json
+          curl -s http://127.0.0.1:18765/ | grep -q "天空日記觀察站"
+          curl -s -X POST -H "Content-Type: application/json" -d '{}' http://127.0.0.1:18765/api/quit
+          rm -rf ./smoke smoke.log state.json
       - name: 壓縮
         working-directory: app/dist
         shell: bash
