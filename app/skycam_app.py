@@ -17,6 +17,7 @@ import signal
 import socket
 import sys
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,8 +30,9 @@ from PIL import Image
 import models
 import skycam_tool
 
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.2.0"
 SHARE_URL = ""
+MAX_LIVE_CAMERAS = 6
 
 TZ_TAIPEI = timezone(timedelta(hours=8))
 
@@ -155,6 +157,81 @@ def http_get_json(url: str, timeout: float = 5.0) -> dict:
     if not isinstance(data, dict):
         raise ValueError("回應不是 JSON 物件")
     return data
+
+
+def http_get_bytes(url: str, timeout: float = 15.0) -> bytes:
+    """對指定網址發送 HTTP GET 並讀取原始位元組資料。"""
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = resp.read()
+    if not data:
+        raise ValueError("相機回傳空的圖片資料")
+    return data
+
+
+def validate_live_camera_address(raw) -> str:
+    """驗證即時畫面相機網址：必須以 http:// 或 https:// 開頭，並去掉結尾斜線。"""
+    if not isinstance(raw, str):
+        raise ValueError("相機網址必須以 http:// 或 https:// 開頭")
+    text = raw.strip()
+    if not (text.startswith("http://") or text.startswith("https://")):
+        raise ValueError("相機網址必須以 http:// 或 https:// 開頭")
+    text = text.rstrip("/")
+    if any(ch.isspace() for ch in text):
+        raise ValueError("相機網址格式不正確")
+    parsed = urllib.parse.urlsplit(text)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("相機網址格式不正確")
+    try:
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError("相機通訊埠格式不正確") from exc
+    return text
+
+
+def validate_camera_name(raw, default_name: str | None = None) -> str:
+    """驗證相機名字：去空白後 1～20 字；若提供 default_name，空白時套用預設名。"""
+    if raw is None:
+        if default_name is not None:
+            return default_name
+        raise ValueError("相機名字長度必須是 1 到 20 個字")
+    if not isinstance(raw, str):
+        raise ValueError("相機名字格式不正確")
+    cleaned = raw.strip()
+    if not cleaned:
+        if default_name is not None:
+            return default_name
+        raise ValueError("相機名字長度必須是 1 到 20 個字")
+    if len(cleaned) > 20:
+        raise ValueError("相機名字長度必須是 1 到 20 個字")
+    return cleaned
+
+
+def infer_camera_model(status: dict) -> str:
+    """依相機 /status 判斷型號。"""
+    raw_model = status.get("model")
+    if isinstance(raw_model, str) and raw_model.strip():
+        return raw_model.strip()
+    fw = str(status.get("fw") or "").strip()
+    if fw.startswith("amb-"):
+        return "AMB82-MINI"
+    return "XIAO ESP32-S3"
+
+
+def model_min_interval_s(model: str | None) -> int:
+    """依相機型號決定最小即時拍照間隔（秒）。"""
+    return 2 if model == "AMB82-MINI" else 10
+
+
+class _LiveCameraState:
+    """保存單台即時相機的拍照鎖、型號記憶與最近一張 JPEG 快取。"""
+
+    def __init__(self) -> None:
+        self.fetch_lock = threading.Lock()
+        self.data_lock = threading.Lock()
+        self.model: str | None = None
+        self.last_jpeg: bytes | None = None
+        self.last_ts: float = 0.0
 
 
 def post_json_follow_redirect(url: str, payload: dict, timeout: float = 30.0) -> dict:
@@ -597,7 +674,10 @@ class SkyCamApp:
         self._moon_lock = threading.Lock()
         self._cloud_lock = threading.Lock()
         self._shadow_lock = threading.Lock()
+        self._cameras_lock = threading.Lock()
+        self._live_map_lock = threading.Lock()
 
+        self._live_states: dict[str, _LiveCameraState] = {}
         self._camera_fw = ""
         self._sync_state: dict = {
             "running": False,
@@ -612,6 +692,7 @@ class SkyCamApp:
         """建立包含新裝置識別碼的預設設定字典。"""
         return {
             "camera": "",
+            "cameras": [],
             "device_id": uuid.uuid4().hex,
             "location": "臺北市",
             "topic": "sunset",
@@ -634,6 +715,39 @@ class SkyCamApp:
         if "camera" not in loaded or not isinstance(loaded["camera"], str):
             loaded["camera"] = defaults["camera"]
             changed = True
+        if "cameras" not in loaded or not isinstance(loaded["cameras"], list):
+            cam_addr = loaded["camera"].strip().rstrip("/")
+            if cam_addr:
+                loaded["cameras"] = [{"address": cam_addr, "name": "相機 1"}]
+            else:
+                loaded["cameras"] = []
+            changed = True
+        else:
+            cleaned_cams: list[dict] = []
+            cams_changed = False
+            for item in loaded["cameras"]:
+                if len(cleaned_cams) >= MAX_LIVE_CAMERAS:
+                    cams_changed = True
+                    break
+                if (
+                    isinstance(item, dict)
+                    and isinstance(item.get("address"), str)
+                    and item["address"].strip()
+                ):
+                    addr = item["address"].strip().rstrip("/")
+                    raw_name = item.get("name")
+                    if isinstance(raw_name, str) and raw_name.strip():
+                        name = raw_name.strip()[:20]
+                    else:
+                        name = f"相機 {len(cleaned_cams) + 1}"
+                    if addr != item.get("address") or name != item.get("name"):
+                        cams_changed = True
+                    cleaned_cams.append({"address": addr, "name": name})
+                else:
+                    cams_changed = True
+            if cams_changed:
+                loaded["cameras"] = cleaned_cams
+                changed = True
         if not loaded.get("device_id") or not isinstance(loaded["device_id"], str):
             loaded["device_id"] = defaults["device_id"]
             changed = True
@@ -884,6 +998,220 @@ class SkyCamApp:
                     if result is not None:
                         found.append(result)
         return found
+
+    # -------------------- 多台即時畫面相機 --------------------
+
+    @staticmethod
+    def _format_cameras(cameras: list[dict]) -> list[dict]:
+        """將設定中的相機清單轉成含 index 的回應格式。"""
+        return [
+            {
+                "index": idx,
+                "address": str(cam.get("address", "")),
+                "name": str(cam.get("name", f"相機 {idx + 1}")),
+            }
+            for idx, cam in enumerate(cameras)
+        ]
+
+    def _get_live_state(self, address: str) -> _LiveCameraState:
+        """依相機網址取得或建立對應的即時狀態物件。"""
+        key = address.rstrip("/")
+        with self._live_map_lock:
+            st = self._live_states.get(key)
+            if st is None:
+                st = _LiveCameraState()
+                self._live_states[key] = st
+            return st
+
+    def _drop_live_state(self, address: str) -> None:
+        """移除已刪除相機的即時快取狀態。"""
+        key = address.rstrip("/")
+        with self._live_map_lock:
+            self._live_states.pop(key, None)
+
+    def list_cameras(self) -> list[dict]:
+        """回傳目前的即時畫面相機清單。"""
+        settings = self.get_settings()
+        cameras = settings.get("cameras", [])
+        return self._format_cameras(cameras)
+
+    def add_camera(self, body: dict) -> list[dict]:
+        """新增一台即時畫面相機到清單並存檔。"""
+        if not isinstance(body, dict):
+            raise ValueError("相機資料格式不正確")
+        address = validate_live_camera_address(body.get("address"))
+        with self._cameras_lock:
+            settings = self.get_settings()
+            cameras = list(settings.get("cameras", []))
+            if any(str(c.get("address", "")).rstrip("/") == address for c in cameras):
+                raise ValueError("這台相機已經在清單裡")
+            if len(cameras) >= MAX_LIVE_CAMERAS:
+                raise ValueError(f"最多只能加入 {MAX_LIVE_CAMERAS} 台相機")
+            default_name = f"相機 {len(cameras) + 1}"
+            name = validate_camera_name(body.get("name"), default_name=default_name)
+            cameras.append({"address": address, "name": name})
+            settings["cameras"] = cameras
+            self.save_settings(settings)
+            return self._format_cameras(cameras)
+
+    def remove_camera(self, body: dict) -> list[dict]:
+        """依 index 刪除一台相機並存檔。"""
+        if not isinstance(body, dict):
+            raise ValueError("刪除參數格式不正確")
+        index = body.get("index")
+        if isinstance(index, bool) or not isinstance(index, int):
+            raise ValueError("相機編號不正確")
+        with self._cameras_lock:
+            settings = self.get_settings()
+            cameras = list(settings.get("cameras", []))
+            if not (0 <= index < len(cameras)):
+                raise ValueError("相機編號不正確")
+            removed = cameras.pop(index)
+            settings["cameras"] = cameras
+            self.save_settings(settings)
+        self._drop_live_state(str(removed.get("address", "")))
+        return self._format_cameras(cameras)
+
+    def rename_camera(self, body: dict) -> list[dict]:
+        """依 index 修改相機名字並存檔。"""
+        if not isinstance(body, dict):
+            raise ValueError("改名參數格式不正確")
+        index = body.get("index")
+        if isinstance(index, bool) or not isinstance(index, int):
+            raise ValueError("相機編號不正確")
+        name = validate_camera_name(body.get("name"), default_name=None)
+        with self._cameras_lock:
+            settings = self.get_settings()
+            cameras = list(settings.get("cameras", []))
+            if not (0 <= index < len(cameras)):
+                raise ValueError("相機編號不正確")
+            cameras[index] = {
+                "address": str(cameras[index].get("address", "")),
+                "name": name,
+            }
+            settings["cameras"] = cameras
+            self.save_settings(settings)
+            return self._format_cameras(cameras)
+
+    def add_scanned_cameras(self) -> tuple[int, list[dict]]:
+        """掃描區網相機，把清單裡沒有的加入（總數最多 6 台）。"""
+        found = self.scan_cameras()
+        with self._cameras_lock:
+            settings = self.get_settings()
+            cameras = list(settings.get("cameras", []))
+            existing = {str(c.get("address", "")).rstrip("/") for c in cameras}
+            added = 0
+            for item in found:
+                if len(cameras) >= MAX_LIVE_CAMERAS:
+                    break
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    addr = validate_live_camera_address(item.get("address"))
+                except ValueError:
+                    continue
+                if addr in existing:
+                    continue
+                cameras.append({"address": addr, "name": f"相機 {len(cameras) + 1}"})
+                existing.add(addr)
+                added += 1
+            if added > 0:
+                settings["cameras"] = cameras
+                self.save_settings(settings)
+            return added, self._format_cameras(cameras)
+
+    def get_live_status(self) -> dict:
+        """同時查詢清單中所有相機的 /status（每台逾時 3 秒）。"""
+        cameras = self.list_cameras()
+        if not cameras:
+            return {"ok": True, "cameras": []}
+
+        def query_one(cam: dict) -> dict:
+            address = cam["address"].rstrip("/")
+            st = self._get_live_state(address)
+            try:
+                data = http_get_json(f"{address}/status", timeout=3.0)
+            except Exception:
+                with st.data_lock:
+                    known_model = st.model
+                    st.last_jpeg = None
+                    st.last_ts = 0.0
+                return {
+                    "index": cam["index"],
+                    "name": cam["name"],
+                    "address": cam["address"],
+                    "online": False,
+                    "fw": None,
+                    "model": None,
+                    "rssi": None,
+                    "chip_temp_c": None,
+                    "shots_today": None,
+                    "last_file": None,
+                    "min_interval_s": model_min_interval_s(known_model),
+                }
+
+            model = infer_camera_model(data)
+            min_int = model_min_interval_s(model)
+            with st.data_lock:
+                st.model = model
+            rssi = data.get("rssi") if "rssi" in data else data.get("wifi_rssi")
+            return {
+                "index": cam["index"],
+                "name": cam["name"],
+                "address": cam["address"],
+                "online": True,
+                "fw": data.get("fw"),
+                "model": model,
+                "rssi": rssi,
+                "chip_temp_c": data.get("chip_temp_c"),
+                "shots_today": data.get("shots_today"),
+                "last_file": data.get("last_file"),
+                "min_interval_s": min_int,
+            }
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(cameras)) as executor:
+            results = list(executor.map(query_one, cameras))
+        return {"ok": True, "cameras": results}
+
+    def get_live_jpeg(self, index: int) -> tuple[bytes, str]:
+        """代理抓取指定相機的即時 JPEG（不含 save=1，附最小間隔節流與每台鎖）。"""
+        cameras = self.list_cameras()
+        if not (0 <= index < len(cameras)):
+            raise FileNotFoundError("找不到這台相機")
+        address = cameras[index]["address"].rstrip("/")
+        st = self._get_live_state(address)
+
+        with st.fetch_lock:
+            with st.data_lock:
+                known_model = st.model
+                cached_jpeg = st.last_jpeg
+                cached_ts = st.last_ts
+
+            if known_model is None:
+                try:
+                    status = http_get_json(f"{address}/status", timeout=3.0)
+                    known_model = infer_camera_model(status)
+                    with st.data_lock:
+                        st.model = known_model
+                except Exception:
+                    known_model = None
+
+            min_int = model_min_interval_s(known_model)
+            if cached_jpeg is not None and (time.monotonic() - cached_ts) < min_int:
+                return cached_jpeg, "hit"
+
+            try:
+                jpeg_bytes = http_get_bytes(f"{address}/capture", timeout=15.0)
+            except Exception as exc:
+                with st.data_lock:
+                    st.last_jpeg = None
+                    st.last_ts = 0.0
+                raise ConnectionError("相機沒有回應") from exc
+
+            with st.data_lock:
+                st.last_jpeg = jpeg_bytes
+                st.last_ts = time.monotonic()
+            return jpeg_bytes, "miss"
 
     def update_camera_config(self, body: dict) -> dict:
         """驗證相機設定參數並代理送到相機 /config。"""
@@ -1990,13 +2318,22 @@ def make_handler(app: SkyCamApp):
             """靜音預設的存取紀錄輸出，保持終端機乾淨。"""
             return
 
-        def _send_bytes(self, status: int, content_type: str, data: bytes) -> None:
+        def _send_bytes(
+            self,
+            status: int,
+            content_type: str,
+            data: bytes,
+            extra_headers: dict[str, str] | None = None,
+        ) -> None:
             """送出指定狀態碼、MIME 類型與位元組內容的回應。"""
             self.close_connection = True
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            if extra_headers:
+                for hk, hv in extra_headers.items():
+                    self.send_header(hk, hv)
             self.send_header("Connection", "close")
             self.end_headers()
             try:
@@ -2116,6 +2453,39 @@ def make_handler(app: SkyCamApp):
 
             if raw_path == "/api/state":
                 self._send_json(200, app.get_state())
+                return
+
+            if raw_path == "/api/cameras":
+                self._send_json(200, {"ok": True, "cameras": app.list_cameras()})
+                return
+
+            if raw_path == "/api/live/status":
+                self._send_json(200, app.get_live_status())
+                return
+
+            if raw_path.startswith("/api/live/") and raw_path.endswith(".jpg"):
+                idx_str = raw_path[len("/api/live/") : -len(".jpg")]
+                if not idx_str.isdigit():
+                    self._send_json(404, {"ok": False, "error": "找不到這台相機"})
+                    return
+                index = int(idx_str)
+                try:
+                    jpeg_bytes, cache_status = app.get_live_jpeg(index)
+                except FileNotFoundError as exc:
+                    self._send_json(404, {"ok": False, "error": str(exc)})
+                    return
+                except ConnectionError:
+                    self._send_json(502, {"ok": False, "error": "相機沒有回應"})
+                    return
+                except Exception:
+                    self._send_json(502, {"ok": False, "error": "相機沒有回應"})
+                    return
+                self._send_bytes(
+                    200,
+                    "image/jpeg",
+                    jpeg_bytes,
+                    extra_headers={"X-Live-Cache": cache_status},
+                )
                 return
 
             if raw_path == "/api/camera/status":
@@ -2415,6 +2785,38 @@ def make_handler(app: SkyCamApp):
             if raw_path == "/api/camera/scan":
                 found = app.scan_cameras()
                 self._send_json(200, {"ok": True, "found": found})
+                return
+
+            if raw_path == "/api/cameras":
+                try:
+                    cameras = app.add_camera(body)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, {"ok": True, "cameras": cameras})
+                return
+
+            if raw_path == "/api/cameras/remove":
+                try:
+                    cameras = app.remove_camera(body)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, {"ok": True, "cameras": cameras})
+                return
+
+            if raw_path == "/api/cameras/rename":
+                try:
+                    cameras = app.rename_camera(body)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, {"ok": True, "cameras": cameras})
+                return
+
+            if raw_path == "/api/cameras/add_scanned":
+                added, cameras = app.add_scanned_cameras()
+                self._send_json(200, {"ok": True, "added": added, "cameras": cameras})
                 return
 
             if raw_path == "/api/camera/config":

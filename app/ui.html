@@ -569,6 +569,21 @@
       background: rgba(255, 255, 255, 0.25);
     }
 
+    .live-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+    .live-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04); display: flex; flex-direction: column; gap: 10px; }
+    .live-card-title { margin: 0; font-size: 1.08rem; color: #163056; }
+    .live-frame { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #0f172a; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
+    .live-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .live-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #e2e8f0; font-size: 1rem; font-weight: 600; background: rgba(15, 23, 42, 0.72); text-align: center; padding: 12px; }
+    .live-badge { position: absolute; top: 8px; right: 8px; background: rgba(15, 23, 42, 0.75); color: #f8fafc; font-size: 0.8rem; padding: 3px 9px; border-radius: 999px; }
+    .live-status-line { font-size: 0.9rem; color: var(--muted); min-height: 1.4em; word-break: break-word; }
+    .live-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+    .live-controls select { min-width: 96px; padding: 6px 10px; font-size: 0.92rem; }
+    .live-manage-list { display: flex; flex-direction: column; gap: 10px; }
+    .live-manage-item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: #f8fafd; border: 1px solid var(--border); border-radius: 10px; }
+    .live-manage-addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; color: var(--muted); min-width: 180px; flex: 1; word-break: break-all; }
+    @media (max-width: 720px) { .live-grid { grid-template-columns: 1fr; } }
+
     @media (max-width: 640px) {
       .wrap {
         padding: 12px;
@@ -610,6 +625,7 @@
 
     <nav class="tabs" aria-label="功能分頁">
       <button type="button" class="active" data-tab="connect">連線</button>
+      <button type="button" data-tab="live">即時畫面</button>
       <button type="button" data-tab="album">相簿</button>
       <button type="button" data-tab="sunset">今天的夕陽</button>
       <button type="button" data-tab="compare">多天比較</button>
@@ -688,6 +704,43 @@
         <div class="row">
           <button type="button" class="btn btn-warm" id="btn-sync">同步照片</button>
           <span id="sync-text" class="hint" style="margin: 0;">尚未開始同步</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 即時畫面 -->
+    <section id="tab-live" class="panel">
+      <div class="card">
+        <div class="row" style="justify-content: space-between;">
+          <h2 style="margin: 0;">即時畫面</h2>
+          <div class="row">
+            <button type="button" class="btn btn-sub" id="btn-live-pause-all">全部暫停</button>
+            <button type="button" class="btn" id="btn-live-resume-all">全部繼續</button>
+          </div>
+        </div>
+        <p class="hint">這裡每隔幾秒拍一張照片，不是錄影。XIAO 相機至少 10 秒一張，避免晶片太熱。</p>
+        <div class="notice-box hidden" id="live-autopause-notice" style="margin-top: 12px; margin-bottom: 0;">
+          為了避免相機過熱，已自動暫停。按「全部繼續」再看。
+        </div>
+      </div>
+
+      <div class="live-grid" id="live-grid"></div>
+      <div class="card hidden" id="live-empty">
+        <p class="hint" style="margin: 0;">目前還沒有相機，可以在下方掃描或輸入網址加入。</p>
+      </div>
+
+      <div class="card">
+        <h2>管理相機</h2>
+        <div class="live-manage-list" id="live-manage-list"></div>
+        <p class="hint hidden" id="live-manage-empty">清單裡還沒有相機。</p>
+        <div class="row" style="margin-top: 14px;">
+          <button type="button" class="btn btn-sub" id="btn-live-scan">掃描區網裡的相機</button>
+        </div>
+        <h3>手動新增相機</h3>
+        <div class="row">
+          <input type="text" id="live-add-addr" placeholder="輸入網址，例如 http://192.168.50.209" style="flex: 1; min-width: 220px;">
+          <input type="text" id="live-add-name" maxlength="20" placeholder="名字（可不填，例如 陽臺左）">
+          <button type="button" class="btn" id="btn-live-add">加入</button>
         </div>
       </div>
     </section>
@@ -1168,10 +1221,24 @@
       const SVG_NS = "http://www.w3.org/2000/svg";
 
       let appState = null;
+      let currentTab = "connect";
       let syncTimer = null;
       let albumPhotos = [];
       let albumDate = "";
       let lightboxIndex = -1;
+
+      // 即時畫面狀態：連續看 10 分鐘（600 秒）自動暫停
+      const LIVE_AUTO_PAUSE_SEC = 600;
+      const LIVE_AUTO_PAUSE_MS = 600000; // 10 * 60 * 1000 = 600 * 1000 毫秒
+      const LIVE_STATUS_POLL_MS = 15000;
+      const LIVE_INTERVAL_OPTIONS = [2, 5, 10, 30];
+      let liveCameras = [];
+      let liveCards = [];
+      let livePrefs = {};
+      let liveStatusTimer = null;
+      let liveAutoPauseTimer = null;
+      let liveAutoPaused = false;
+      let liveRenderSeq = 0;
 
       // 植物 canvas 狀態
       let plantImg = null;
@@ -1281,12 +1348,18 @@
       }
 
       function switchTab(tabName) {
+        currentTab = tabName;
         document.querySelectorAll("nav.tabs button").forEach(function (btn) {
           btn.classList.toggle("active", btn.dataset.tab === tabName);
         });
         document.querySelectorAll(".panel").forEach(function (panel) {
           panel.classList.toggle("active", panel.id === "tab-" + tabName);
         });
+        if (tabName === "live") {
+          enterLiveTab();
+        } else {
+          stopLiveLoops();
+        }
         if (tabName === "album") {
           loadAlbumDay();
         } else if (tabName === "sunset") {
@@ -3213,6 +3286,510 @@
         } finally {
           this.disabled = false;
           loadShareLog();
+        }
+      });
+
+      // -------------------- 即時畫面 --------------------
+      function isLiveActive() {
+        return currentTab === "live" && document.visibilityState === "visible";
+      }
+
+      function formatLiveStatusLine(st) {
+        if (!st) return "讀取狀態中…";
+        if (st.online === false) return "離線";
+        const parts = [];
+        if (st.rssi !== null && st.rssi !== undefined) {
+          parts.push("訊號 " + st.rssi + " dBm");
+        }
+        if (st.chip_temp_c !== null && st.chip_temp_c !== undefined) {
+          parts.push("晶片 " + st.chip_temp_c + "°C");
+        }
+        if (st.shots_today !== null && st.shots_today !== undefined) {
+          parts.push("今天 " + st.shots_today + " 張");
+        }
+        if (st.fw !== null && st.fw !== undefined && st.fw !== "") {
+          parts.push("韌體 " + st.fw);
+        }
+        return parts.length ? parts.join("｜") : "連線中";
+      }
+
+      function pickDefaultInterval(minInterval) {
+        const minVal = Number(minInterval) || 10;
+        for (let i = 0; i < LIVE_INTERVAL_OPTIONS.length; i++) {
+          if (LIVE_INTERVAL_OPTIONS[i] >= minVal) return LIVE_INTERVAL_OPTIONS[i];
+        }
+        return 30;
+      }
+
+      function getLivePref(address) {
+        if (!livePrefs[address]) {
+          livePrefs[address] = {
+            minInterval: 10,
+            intervalSec: 10,
+            userPicked: false,
+            paused: false
+          };
+        }
+        return livePrefs[address];
+      }
+
+      function clearCardTimer(card) {
+        if (card.timerId) {
+          clearInterval(card.timerId);
+          card.timerId = null;
+        }
+      }
+
+      function stopLiveLoops() {
+        liveCards.forEach(clearCardTimer);
+        if (liveStatusTimer) {
+          clearInterval(liveStatusTimer);
+          liveStatusTimer = null;
+        }
+        if (liveAutoPauseTimer) {
+          clearTimeout(liveAutoPauseTimer);
+          liveAutoPauseTimer = null;
+        }
+      }
+
+      function updateCardPauseButton(card) {
+        card.pauseBtn.textContent = card.paused ? "繼續" : "暫停";
+      }
+
+      function triggerLiveAutoPause() {
+        liveAutoPaused = true;
+        liveCards.forEach(function (card) {
+          card.paused = true;
+          getLivePref(card.address).paused = true;
+          updateCardPauseButton(card);
+        });
+        stopLiveLoops();
+        document.getElementById("live-autopause-notice").classList.remove("hidden");
+      }
+
+      function resetLiveAutoPauseTimer() {
+        if (liveAutoPauseTimer) {
+          clearTimeout(liveAutoPauseTimer);
+          liveAutoPauseTimer = null;
+        }
+        const anyRunning = liveCards.some(function (c) { return !c.paused; });
+        if (isLiveActive() && anyRunning) {
+          liveAutoPauseTimer = setTimeout(triggerLiveAutoPause, LIVE_AUTO_PAUSE_MS);
+        }
+      }
+
+      function captureLiveCard(card) {
+        if (!isLiveActive() || card.paused || card.inFlight) return;
+        card.inFlight = true;
+        if (!card.hasImage) {
+          card.overlayEl.textContent = "拍照中…";
+          card.overlayEl.classList.remove("hidden");
+          card.imgEl.classList.add("hidden");
+          card.badgeEl.classList.add("hidden");
+        } else {
+          card.badgeEl.textContent = "拍照中…";
+          card.badgeEl.classList.remove("hidden");
+        }
+        card.imgEl.src = "/api/live/" + card.index + ".jpg?t=" + Date.now();
+      }
+
+      function startCardTimer(card, immediate) {
+        clearCardTimer(card);
+        if (!isLiveActive() || card.paused) return;
+        if (immediate) {
+          captureLiveCard(card);
+        }
+        card.timerId = setInterval(function () {
+          captureLiveCard(card);
+        }, card.intervalSec * 1000);
+      }
+
+      function applyCardMinInterval(card, minInterval) {
+        const minVal = Number(minInterval) || 10;
+        const pref = getLivePref(card.address);
+        card.minInterval = minVal;
+        pref.minInterval = minVal;
+
+        Array.from(card.selectEl.options).forEach(function (opt) {
+          opt.disabled = Number(opt.value) < minVal;
+        });
+
+        let newInterval = card.intervalSec;
+        if (!card.userPicked || card.intervalSec < minVal) {
+          newInterval = pickDefaultInterval(minVal);
+        }
+        const changed = newInterval !== card.intervalSec;
+        card.intervalSec = newInterval;
+        pref.intervalSec = newInterval;
+        card.selectEl.value = String(newInterval);
+        if (changed && isLiveActive() && !card.paused) {
+          startCardTimer(card, false);
+        }
+      }
+
+      async function refreshLiveStatus() {
+        if (!liveCameras.length) return;
+        try {
+          const res = await apiFetch("/api/live/status");
+          const list = res.cameras || [];
+          list.forEach(function (st) {
+            const card = liveCards[st.index];
+            if (!card || card.address !== st.address) return;
+            card.statusEl.textContent = formatLiveStatusLine(st);
+            applyCardMinInterval(card, st.min_interval_s);
+          });
+        } catch (err) {
+          /* 略過輪詢錯誤 */
+        }
+      }
+
+      function startLiveLoops(immediateCapture) {
+        stopLiveLoops();
+        if (!isLiveActive() || !liveCards.length) return;
+        const anyRunning = liveCards.some(function (c) { return !c.paused; });
+        if (!anyRunning) return;
+
+        liveStatusTimer = setInterval(function () {
+          if (isLiveActive()) refreshLiveStatus();
+        }, LIVE_STATUS_POLL_MS);
+
+        liveCards.forEach(function (card) {
+          if (!card.paused) {
+            startCardTimer(card, immediateCapture);
+          }
+        });
+        resetLiveAutoPauseTimer();
+      }
+
+      function renderLiveManageList() {
+        const listEl = document.getElementById("live-manage-list");
+        const emptyEl = document.getElementById("live-manage-empty");
+        listEl.innerHTML = "";
+        emptyEl.classList.toggle("hidden", liveCameras.length > 0);
+
+        liveCameras.forEach(function (cam) {
+          const row = document.createElement("div");
+          row.className = "live-manage-item";
+
+          const addrSpan = document.createElement("span");
+          addrSpan.className = "live-manage-addr";
+          addrSpan.textContent = cam.address;
+          row.appendChild(addrSpan);
+
+          const nameInput = document.createElement("input");
+          nameInput.type = "text";
+          nameInput.maxLength = 20;
+          nameInput.value = cam.name;
+          nameInput.setAttribute("aria-label", "相機名字");
+          row.appendChild(nameInput);
+
+          const renameBtn = document.createElement("button");
+          renameBtn.type = "button";
+          renameBtn.className = "btn btn-sub";
+          renameBtn.textContent = "改名";
+          renameBtn.addEventListener("click", async function () {
+            this.disabled = true;
+            try {
+              const res = await apiFetch("/api/cameras/rename", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ index: cam.index, name: nameInput.value })
+              });
+              showMessage("已修改相機名字", "ok");
+              await applyLiveCamerasList(res.cameras || []);
+            } catch (err) {
+              showMessage(err.message, "err");
+            } finally {
+              this.disabled = false;
+            }
+          });
+          row.appendChild(renameBtn);
+
+          const delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "btn btn-warm";
+          delBtn.textContent = "刪除";
+          delBtn.addEventListener("click", async function () {
+            this.disabled = true;
+            try {
+              const res = await apiFetch("/api/cameras/remove", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ index: cam.index })
+              });
+              delete livePrefs[cam.address];
+              showMessage("已刪除相機", "ok");
+              await applyLiveCamerasList(res.cameras || []);
+            } catch (err) {
+              showMessage(err.message, "err");
+            } finally {
+              this.disabled = false;
+            }
+          });
+          row.appendChild(delBtn);
+
+          listEl.appendChild(row);
+        });
+      }
+
+      function renderLiveCards() {
+        stopLiveLoops();
+        liveRenderSeq += 1;
+        const seq = liveRenderSeq;
+
+        const grid = document.getElementById("live-grid");
+        const emptyBox = document.getElementById("live-empty");
+        grid.innerHTML = "";
+        liveCards = [];
+        emptyBox.classList.toggle("hidden", liveCameras.length > 0);
+
+        liveCameras.forEach(function (cam) {
+          const pref = getLivePref(cam.address);
+          if (liveAutoPaused) {
+            pref.paused = true;
+          }
+
+          const cardEl = document.createElement("div");
+          cardEl.className = "live-card";
+
+          const title = document.createElement("h3");
+          title.className = "live-card-title";
+          title.textContent = cam.name;
+          cardEl.appendChild(title);
+
+          const frame = document.createElement("div");
+          frame.className = "live-frame";
+
+          const imgEl = document.createElement("img");
+          imgEl.alt = cam.name + " 即時畫面";
+          imgEl.className = "hidden";
+          frame.appendChild(imgEl);
+
+          const overlayEl = document.createElement("div");
+          overlayEl.className = "live-overlay";
+          overlayEl.textContent = pref.paused ? "已暫停" : "拍照中…";
+          frame.appendChild(overlayEl);
+
+          const badgeEl = document.createElement("span");
+          badgeEl.className = "live-badge hidden";
+          badgeEl.textContent = "拍照中…";
+          frame.appendChild(badgeEl);
+
+          cardEl.appendChild(frame);
+
+          const statusEl = document.createElement("div");
+          statusEl.className = "live-status-line";
+          statusEl.textContent = "讀取狀態中…";
+          cardEl.appendChild(statusEl);
+
+          const controls = document.createElement("div");
+          controls.className = "live-controls";
+
+          const freqWrap = document.createElement("div");
+          freqWrap.className = "row";
+          const freqLabel = document.createElement("label");
+          freqLabel.textContent = "更新頻率";
+          const selectEl = document.createElement("select");
+          selectEl.setAttribute("aria-label", cam.name + " 更新頻率");
+          LIVE_INTERVAL_OPTIONS.forEach(function (sec) {
+            const opt = document.createElement("option");
+            opt.value = String(sec);
+            opt.textContent = sec + " 秒";
+            opt.disabled = sec < pref.minInterval;
+            selectEl.appendChild(opt);
+          });
+          selectEl.value = String(pref.intervalSec);
+          freqWrap.appendChild(freqLabel);
+          freqWrap.appendChild(selectEl);
+          controls.appendChild(freqWrap);
+
+          const pauseBtn = document.createElement("button");
+          pauseBtn.type = "button";
+          pauseBtn.className = "btn btn-sub";
+          controls.appendChild(pauseBtn);
+
+          cardEl.appendChild(controls);
+          grid.appendChild(cardEl);
+
+          const cardState = {
+            index: cam.index,
+            address: cam.address,
+            name: cam.name,
+            minInterval: pref.minInterval,
+            intervalSec: pref.intervalSec,
+            userPicked: pref.userPicked,
+            paused: pref.paused,
+            inFlight: false,
+            hasImage: false,
+            timerId: null,
+            imgEl: imgEl,
+            overlayEl: overlayEl,
+            badgeEl: badgeEl,
+            statusEl: statusEl,
+            selectEl: selectEl,
+            pauseBtn: pauseBtn
+          };
+          updateCardPauseButton(cardState);
+
+          imgEl.addEventListener("load", function () {
+            if (seq !== liveRenderSeq) return;
+            cardState.inFlight = false;
+            cardState.hasImage = true;
+            imgEl.classList.remove("hidden");
+            overlayEl.classList.add("hidden");
+            badgeEl.classList.add("hidden");
+          });
+
+          imgEl.addEventListener("error", function () {
+            if (seq !== liveRenderSeq) return;
+            cardState.inFlight = false;
+            cardState.hasImage = false;
+            imgEl.classList.add("hidden");
+            badgeEl.classList.add("hidden");
+            overlayEl.textContent = "相機沒有回應";
+            overlayEl.classList.remove("hidden");
+          });
+
+          selectEl.addEventListener("change", function () {
+            const chosen = Number(selectEl.value);
+            if (chosen < cardState.minInterval) {
+              selectEl.value = String(cardState.intervalSec);
+              return;
+            }
+            cardState.intervalSec = chosen;
+            cardState.userPicked = true;
+            pref.intervalSec = chosen;
+            pref.userPicked = true;
+            if (isLiveActive() && !cardState.paused) {
+              startCardTimer(cardState, false);
+            }
+          });
+
+          pauseBtn.addEventListener("click", function () {
+            cardState.paused = !cardState.paused;
+            pref.paused = cardState.paused;
+            updateCardPauseButton(cardState);
+            if (cardState.paused) {
+              clearCardTimer(cardState);
+              if (!cardState.hasImage) {
+                overlayEl.textContent = "已暫停";
+                overlayEl.classList.remove("hidden");
+              }
+              if (!liveCards.some(function (c) { return !c.paused; })) {
+                stopLiveLoops();
+              }
+            } else {
+              liveAutoPaused = false;
+              document.getElementById("live-autopause-notice").classList.add("hidden");
+              if (!liveStatusTimer && isLiveActive()) {
+                refreshLiveStatus();
+                liveStatusTimer = setInterval(function () {
+                  if (isLiveActive()) refreshLiveStatus();
+                }, LIVE_STATUS_POLL_MS);
+              }
+              startCardTimer(cardState, true);
+              resetLiveAutoPauseTimer();
+            }
+          });
+
+          liveCards.push(cardState);
+        });
+      }
+
+      async function applyLiveCamerasList(cameras) {
+        liveCameras = cameras || [];
+        renderLiveManageList();
+        renderLiveCards();
+        if (isLiveActive() && liveCameras.length > 0) {
+          await refreshLiveStatus();
+          if (isLiveActive() && !liveAutoPaused) {
+            startLiveLoops(true);
+          }
+        }
+      }
+
+      async function enterLiveTab() {
+        try {
+          const res = await apiFetch("/api/cameras");
+          await applyLiveCamerasList(res.cameras || []);
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      document.getElementById("btn-live-pause-all").addEventListener("click", function () {
+        liveCards.forEach(function (card) {
+          card.paused = true;
+          getLivePref(card.address).paused = true;
+          updateCardPauseButton(card);
+          if (!card.hasImage) {
+            card.overlayEl.textContent = "已暫停";
+            card.overlayEl.classList.remove("hidden");
+          }
+        });
+        stopLiveLoops();
+      });
+
+      document.getElementById("btn-live-resume-all").addEventListener("click", async function () {
+        liveAutoPaused = false;
+        document.getElementById("live-autopause-notice").classList.add("hidden");
+        liveCards.forEach(function (card) {
+          card.paused = false;
+          getLivePref(card.address).paused = false;
+          updateCardPauseButton(card);
+        });
+        if (isLiveActive() && liveCards.length > 0) {
+          await refreshLiveStatus();
+          startLiveLoops(true);
+        }
+      });
+
+      document.getElementById("btn-live-scan").addEventListener("click", async function () {
+        this.disabled = true;
+        showMessage("正在掃描區網裡的相機，請稍候…", "info");
+        try {
+          const res = await apiFetch("/api/cameras/add_scanned", { method: "POST" });
+          showMessage("找到並加入 " + res.added + " 台", "ok");
+          await applyLiveCamerasList(res.cameras || []);
+        } catch (err) {
+          showMessage(err.message, "err");
+        } finally {
+          this.disabled = false;
+        }
+      });
+
+      document.getElementById("btn-live-add").addEventListener("click", async function () {
+        const addrInput = document.getElementById("live-add-addr");
+        const nameInput = document.getElementById("live-add-name");
+        this.disabled = true;
+        try {
+          const res = await apiFetch("/api/cameras", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              address: addrInput.value,
+              name: nameInput.value
+            })
+          });
+          addrInput.value = "";
+          nameInput.value = "";
+          showMessage("已加入相機", "ok");
+          await applyLiveCamerasList(res.cameras || []);
+        } catch (err) {
+          showMessage(err.message, "err");
+        } finally {
+          this.disabled = false;
+        }
+      });
+
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "visible") {
+          if (currentTab === "live" && !liveAutoPaused && liveCards.length > 0) {
+            refreshLiveStatus();
+            startLiveLoops(true);
+          }
+        } else {
+          stopLiveLoops();
         }
       });
 
