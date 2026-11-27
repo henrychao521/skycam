@@ -577,7 +577,25 @@ def moon_illumination(when: datetime) -> dict:
         jd_new_moon = 0.5 * (t_lo + t_hi)
         age_days = max(0.0, jd_ut - jd_new_moon)
 
-    phase_idx = int(((elongation + 22.5) % 360.0) // 45.0)
+    # 新月、上弦、滿月、下弦是「某個時刻」，只在前後約 1 天（黃經差 ±12°，弦月時亮面約 40%～60%）用這些名稱；
+    # 其餘時間用眉月、盈凸月、虧凸月、殘月，避免亮面 69% 也叫下弦月。
+    _e = elongation % 360.0
+    if _e < 12.0 or _e >= 348.0:
+        phase_idx = 0
+    elif _e < 78.0:
+        phase_idx = 1
+    elif _e < 102.0:
+        phase_idx = 2
+    elif _e < 168.0:
+        phase_idx = 3
+    elif _e < 192.0:
+        phase_idx = 4
+    elif _e < 258.0:
+        phase_idx = 5
+    elif _e < 282.0:
+        phase_idx = 6
+    else:
+        phase_idx = 7
     waxing = 0.0 <= elongation < 180.0
 
     return {

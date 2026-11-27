@@ -29,7 +29,7 @@ from PIL import Image
 import models
 import skycam_tool
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 SHARE_URL = ""
 
 TZ_TAIPEI = timezone(timedelta(hours=8))
