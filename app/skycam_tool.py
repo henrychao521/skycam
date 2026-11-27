@@ -232,7 +232,18 @@ def pull(
         day_dir = out_root / day
         day_dir.mkdir(parents=True, exist_ok=True)
         day_q = urllib.parse.quote(day, safe="")
-        photo_list = _fetch_json(f"{base}/list?day={day_q}", timeout=timeout)
+        # 照片多時（一天兩三百張），相機列清單可能要幾十秒，而且剛好在拍照時會更慢：放寬到 60 秒並重試 3 次
+        photo_list = None
+        for attempt in range(3):
+            try:
+                photo_list = _fetch_json(f"{base}/list?day={day_q}", timeout=max(timeout, 60))
+                break
+            except (OSError, ValueError) as exc:
+                print(f"取得 {day} 的照片清單失敗（第 {attempt + 1} 次）：{exc}", file=sys.stderr)
+                time.sleep(5)
+        if photo_list is None:
+            failed.append(f"{day}/（清單）")
+            continue
 
         for item in photo_list:
             name = str(item["name"])
