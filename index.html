@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>天空日記相機｜網頁燒錄與製作說明</title>
+<meta name="description" content="用拇指大的 XIAO ESP32-S3 Sense 做一台每天自動拍天空的相機：免安裝軟體，用瀏覽器就能把程式放進板子。">
+<script type="module" src="https://unpkg.com/esp-web-tools@10.2.1/dist/web/install-button.js?module"></script>
+<style>
+  :root { --ink:#1b3a5c; --sub:#56657a; --bg:#fdfbf7; --card:#ffffff; --line:#e3ddd2; --accent:#e8763a; --accent-d:#9c4a17; --ok:#3f8f6b; --warn-bg:#fff3e8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.75 -apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif; }
+  header { background:linear-gradient(180deg,#27557f 0%,#e8915a 78%,#f6c98d 100%); color:#fff; padding:56px 20px 64px; text-align:center; }
+  header h1 { margin:0 0 8px; font-size:clamp(30px,6vw,46px); letter-spacing:.04em; }
+  header p { margin:0 auto; max-width:34em; opacity:.95; }
+  main { max-width:820px; margin:-36px auto 0; padding:0 16px 64px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:22px 24px; margin-bottom:18px; }
+  h2 { margin:0 0 10px; font-size:23px; display:flex; align-items:center; gap:.5em; }
+  h2 .n { flex:none; width:1.7em; height:1.7em; border-radius:50%; background:var(--accent); color:#fff; display:inline-grid; place-items:center; font-size:.8em; }
+  h3 { margin:18px 0 6px; font-size:18px; }
+  ol, ul { padding-left:1.3em; margin:8px 0; }
+  li { margin:4px 0; }
+  code { background:#f1ede4; padding:.1em .4em; border-radius:6px; font-size:.92em; word-break:break-all; }
+  .note { background:var(--warn-bg); border-left:5px solid var(--accent); border-radius:8px; padding:10px 14px; margin:12px 0; color:var(--accent-d); }
+  .ok { border-left-color:var(--ok); background:#eef7f2; color:#1f6349; }
+  .flash { text-align:center; padding:8px 0 4px; }
+  .btn { display:inline-block; background:var(--accent); color:#fff; border:0; border-radius:999px; padding:14px 34px; font-size:19px; font-weight:700; cursor:pointer; text-decoration:none; }
+  .btn.sub { background:#fff; color:var(--ink); border:2px solid var(--ink); font-size:16px; padding:9px 20px; margin:4px 6px 4px 0; }
+  .small { font-size:15px; color:var(--sub); }
+  table { border-collapse:collapse; width:100%; margin:8px 0; font-size:16px; }
+  th, td { border:1px solid var(--line); padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#f6f2ea; }
+  footer { text-align:center; color:var(--sub); font-size:14px; padding:0 16px 40px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>天空日記相機</h1>
+  <p>一塊拇指大的開發板，每天自動幫天空拍照。<br>不用安裝任何軟體，用瀏覽器就能把程式放進板子。</p>
+</header>
+<main>
+
+<section>
+  <h2><span class="n">1</span>你需要準備</h2>
+  <ul>
+    <li><strong>Seeed Studio XIAO ESP32-S3 Sense</strong>（有鏡頭的那一款），插好 microSD 卡（32 GB 以下、FAT32 格式）、接好天線。</li>
+    <li><strong>USB-C 傳輸線</strong>（要能傳資料，只能充電的線不行）。</li>
+    <li>一台電腦，使用 <strong>Chrome 或 Edge 瀏覽器</strong>（電腦版）。手機、平板、Safari、Firefox 不能燒錄。</li>
+  </ul>
+  <p class="small">燒錄和接電請大人陪同。</p>
+</section>
+
+<section>
+  <h2><span class="n">2</span>把程式放進板子</h2>
+  <ol>
+    <li>用 USB-C 線把板子接上電腦。</li>
+    <li>按下面的按鈕，在跳出的清單選名稱有 <code>USB JTAG/serial</code> 的那一項，再按「連線」。</li>
+    <li>選「安裝」。大約 1 分鐘，進度條跑完就好了。</li>
+  </ol>
+  <div class="flash">
+    <esp-web-install-button manifest="firmware/manifest.json">
+      <button slot="activate" class="btn">連接板子，開始安裝</button>
+      <div slot="unsupported" class="note">這個瀏覽器不能燒錄。請改用電腦版的 Chrome 或 Edge 開啟這一頁。</div>
+      <div slot="not-allowed" class="note">這一頁要用 https 開啟才能燒錄。</div>
+    </esp-web-install-button>
+    <p class="small">目前版本：1.1.0（2026 年 11 月）</p>
+  </div>
+  <div class="note">清單裡找不到板子？拔掉 USB，<strong>按住板子上的 B（BOOT）小按鈕不放</strong>，再插上 USB，然後放開按鈕，重新按上面的按鈕。</div>
+</section>
+
+<section>
+  <h2><span class="n">3</span>告訴相機家裡的 Wi-Fi</h2>
+  <p>相機要連上網路才能對時、才能把照片傳給電腦。只支援 <strong>2.4 GHz</strong> 的 Wi-Fi。兩種方法選一種：</p>
+  <h3>方法一：安裝完直接在電腦上設定</h3>
+  <p>安裝完成後，同一個視窗會出現「設定 Wi-Fi」。選家裡的 Wi-Fi、輸入密碼就完成了。<br>
+  <span class="small">如果視窗沒有出現這個選項，按一下板子上的 R（RESET）小按鈕，再按一次上面的安裝按鈕就會看到。</span></p>
+  <h3>方法二：用手機設定</h3>
+  <ol>
+    <li>板子上的橘色小燈如果「快閃兩下、停一下」，表示它在等你設定。</li>
+    <li>打開手機的 Wi-Fi，連到名稱是 <code>SkyCam-XXXX</code> 的熱點（沒有密碼）。</li>
+    <li>手機會自動跳出設定畫面；沒有跳出來就用瀏覽器開 <code>http://192.168.4.1/setup</code>。</li>
+    <li>選家裡的 Wi-Fi、輸入密碼，按「儲存並連線」。相機會重新啟動，小燈不再閃。</li>
+  </ol>
+  <div class="note ok">設定成功後，用連著同一個 Wi-Fi 的手機或電腦開 <code>http://skycam.local</code>，就能看到相機的即時畫面。</div>
+</section>
+
+<section>
+  <h2><span class="n">4</span>相機每天做什麼</h2>
+  <table>
+    <tr><th>時間</th><th>做什麼</th></tr>
+    <tr><td>05:00～19:00</td><td>每 10 分鐘拍一張，存進記憶卡</td></tr>
+    <tr><td>16:00～18:00</td><td>每 1 分鐘拍一張，另外多拍一張很暗的「暗曝光」照片，用來找太陽在哪裡</td></tr>
+  </table>
+  <p>照片存在記憶卡裡，每天一個資料夾。想改 Wi-Fi 開 <code>http://skycam.local/setup</code>；畫面上下顛倒開 <code>http://skycam.local/config?flip=1</code>。</p>
+  <p class="small">不可以用眼睛直接看太陽，也不可以透過望遠鏡或相機的觀景窗看太陽。在陽臺架相機要請大人幫忙，身體不可以探出欄杆。</p>
+</section>
+
+<section>
+  <h2><span class="n">5</span>以後要更新程式</h2>
+  <p>相機裝好以後不用再拆下來接電腦。用同一個 Wi-Fi 的電腦開 <code>http://skycam.local/update</code>，選下載好的更新檔，按「開始更新」就可以了。</p>
+  <p><a class="btn sub" href="firmware/skycam-1.1.0.bin" download>下載更新檔 1.1.0</a></p>
+</section>
+
+<section>
+  <h2><span class="n">6</span>外殼、原始程式與電腦工具</h2>
+  <p>
+    <a class="btn sub" href="downloads/skycam_stl.zip" download>外殼列印檔（STL）</a>
+    <a class="btn sub" href="https://cad.onshape.com/documents/0527d4cbd4afc16e7d548c29" target="_blank" rel="noopener">在 Onshape 打開外殼</a>
+    <a class="btn sub" href="downloads/skycam_source.zip" download>原始程式</a>
+    <a class="btn sub" href="downloads/skycam_pc_tool.zip" download>電腦端工具</a>
+  </p>
+  <ul>
+    <li><strong>外殼</strong>：背殼、前蓋、可調仰角立座三件。PLA、層高 0.2 mm、不需要支撐，另外準備 M3×10 螺絲 4 顆。</li>
+    <li><strong>電腦端工具</strong>：把相機裡的照片抓回電腦，做成太陽軌跡圖、天空色條和縮時影片（需要 Python）。</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="n">?</span>遇到問題</h2>
+  <table>
+    <tr><th>狀況</th><th>可以試試</th></tr>
+    <tr><td>按了安裝按鈕，清單是空的</td><td>換一條能傳資料的 USB 線；或按住 B 鍵再插 USB（見步驟 2）。</td></tr>
+    <tr><td>安裝完，小燈沒有閃、也連不上</td><td>按一下 R（RESET）鍵，或把 USB 拔掉重插。</td></tr>
+    <tr><td>手機找不到 <code>SkyCam-XXXX</code></td><td>確認天線有接好；離板子近一點再找一次。</td></tr>
+    <tr><td>設定後小燈又開始閃</td><td>密碼打錯，或選到 5 GHz 的 Wi-Fi。再連一次熱點重新設定。</td></tr>
+    <tr><td><code>skycam.local</code> 打不開</td><td>確認手機或電腦和相機連的是同一個 Wi-Fi；有些路由器要改用相機的 IP 位址（在路由器的裝置清單裡找 skycam）。</td></tr>
+  </table>
+</section>
+
+</main>
+<footer>
+  韌體與外殼設計：趙珩宇｜Wi-Fi 設定使用 Improv Wi-Fi 開放標準，網頁燒錄使用 ESP Web Tools（皆為 Apache-2.0 授權）
+</footer>
+</body>
+</html>
