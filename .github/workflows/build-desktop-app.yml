@@ -1,0 +1,65 @@
+# 天空日記觀察站：在 GitHub 的 Windows 與 macOS 機器上打包安裝檔（PyInstaller）。
+# 推一個 app-v* 標籤（例如 app-v1.0.0）就會自動建置，並把三個壓縮檔放上 GitHub Releases。
+name: build-desktop-app
+on:
+  push:
+    tags: ["app-v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: SkyDiary-Windows
+          - os: macos-14          # Apple 晶片（M1 以後）
+            artifact: SkyDiary-macOS-AppleSilicon
+          - os: macos-15-intel    # Intel Mac
+            artifact: SkyDiary-macOS-Intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 安裝套件
+        run: python -m pip install --upgrade pip numpy pillow pyinstaller==6.11.1 imageio-ffmpeg==0.5.1
+      - name: 打包
+        working-directory: app
+        shell: bash
+        run: |
+          FF=$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
+          mkdir -p ffmpeg_bin
+          SEP=":"; EXE=""; if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; EXE=".exe"; fi
+          cp "$FF" "ffmpeg_bin/ffmpeg${EXE}"; chmod +x "ffmpeg_bin/ffmpeg${EXE}"   # 改名成 ffmpeg，程式才找得到
+          python -m PyInstaller --noconfirm --clean --name "SkyDiary" --windowed \
+            --add-data "ui.html${SEP}." --add-binary "ffmpeg_bin/ffmpeg${EXE}${SEP}ffmpeg_bin" \
+            --hidden-import skycam_tool skycam_app.py
+      - name: 壓縮
+        working-directory: app/dist
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then 7z a ../../${{ matrix.artifact }}.zip SkyDiary; else ditto -c -k --keepParent SkyDiary.app ../../${{ matrix.artifact }}.zip; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.zip
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/app-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          name: 天空日記觀察站 ${{ github.ref_name }}
+          body: |
+            學生用的桌面程式：同步相機照片、看相簿、分析夕陽、（同意後）每天分享一份夕陽摘要給老師。
+            下載對應的壓縮檔，解壓縮後打開 SkyDiary。第一次打開時系統可能會跳出警告，處理方法見 https://henrychao521.github.io/skycam/#app
