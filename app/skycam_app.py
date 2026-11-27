@@ -1339,6 +1339,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     """啟動天空日記觀察站本機網頁伺服器與自動分享排程。"""
     args = parse_args(argv)
+    # Windows 沒有主控台視窗的安裝版裡 sys.stdout／sys.stderr 是 None，網頁伺服器寫紀錄會出錯、請求卡住；
+    # 改寫到資料夾裡的 skydiary.log（也方便學生把紀錄傳給老師看）。
+    if sys.stdout is None or sys.stderr is None:
+        try:
+            Path(args.data).mkdir(parents=True, exist_ok=True)
+            log_file = open(Path(args.data) / "skydiary.log", "a", encoding="utf-8", buffering=1)
+        except OSError:
+            log_file = open(os.devnull, "w")
+        if sys.stdout is None:
+            sys.stdout = log_file
+        if sys.stderr is None:
+            sys.stderr = log_file
     bundled_ffmpeg = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "ffmpeg_bin"
     if bundled_ffmpeg.is_dir():          # 安裝版內附 ffmpeg（做縮時影片用），不必另外安裝
         os.environ["PATH"] = str(bundled_ffmpeg) + os.pathsep + os.environ.get("PATH", "")
