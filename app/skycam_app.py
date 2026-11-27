@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import base64
 import concurrent.futures
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -22,13 +23,16 @@ import urllib.request
 import uuid
 import webbrowser
 
-import numpy as np  # noqa: F401
+import numpy as np
 from PIL import Image
 
+import models
 import skycam_tool
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 SHARE_URL = ""
+
+TZ_TAIPEI = timezone(timedelta(hours=8))
 
 TAIWAN_COUNTIES = (
     "臺北市",
@@ -55,6 +59,8 @@ TAIWAN_COUNTIES = (
     "連江縣",
 )
 
+VALID_TOPICS = ("sunset", "plant", "moon", "cloud", "shadow")
+
 DATE_RE = re.compile(r"^\d{8}$")
 PHOTO_RE = re.compile(r"^\d{6}(_d)?\.jpg$")
 ANALYSIS_RE = re.compile(
@@ -62,6 +68,7 @@ ANALYSIS_RE = re.compile(
 )
 CLASS_CODE_RE = re.compile(r"^[A-Za-z0-9]{0,12}$")
 TIME_COLON_RE = re.compile(r"^(\d{2}):(\d{2}):(\d{2})$")
+TIME_HHMM_RE = re.compile(r"^(\d{2}):(\d{2})(?::(\d{2}))?$")
 TIME_COMPACT_RE = re.compile(r"^(\d{2})(\d{2})(\d{2})")
 
 RESAMPLE_LANCZOS = getattr(Image, "Resampling", Image).LANCZOS
@@ -181,6 +188,168 @@ def post_json_follow_redirect(url: str, payload: dict, timeout: float = 30.0) ->
     raise RuntimeError("轉址次數過多")
 
 
+def parse_date_yyyymmdd(date_str: str) -> date:
+    """驗證 8 位數字日期字串並回傳 date 物件。"""
+    if not isinstance(date_str, str) or not DATE_RE.fullmatch(date_str):
+        raise ValueError("日期格式必須是 8 位數字")
+    try:
+        return datetime.strptime(date_str, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ValueError("日期不正確，請確認年月日") from exc
+
+
+def parse_photo_datetime(date_str: str, filename: str) -> datetime:
+    """將資料夾日期與照片檔名轉成臺灣時間（UTC+8）datetime。"""
+    d = parse_date_yyyymmdd(date_str)
+    if not isinstance(filename, str) or not PHOTO_RE.fullmatch(filename):
+        raise ValueError("照片檔名格式不正確")
+    hh = int(filename[0:2])
+    mm = int(filename[2:4])
+    ss = int(filename[4:6])
+    if not (0 <= hh <= 23 and 0 <= mm <= 59 and 0 <= ss <= 59):
+        raise ValueError("照片檔名中的時間不正確")
+    return datetime(d.year, d.month, d.day, hh, mm, ss, tzinfo=TZ_TAIPEI)
+
+
+def parse_hhmm_seconds(val) -> int | None:
+    """將 HH:MM、HH:MM:SS 或 datetime 轉為午夜起算秒數。"""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.hour * 3600 + val.minute * 60 + val.second
+    text = str(val).strip()
+    match = TIME_HHMM_RE.fullmatch(text)
+    if not match:
+        return None
+    hh = int(match.group(1))
+    mm = int(match.group(2))
+    ss = int(match.group(3) or "0")
+    if not (0 <= hh <= 23 and 0 <= mm <= 59 and 0 <= ss <= 59):
+        return None
+    return hh * 3600 + mm * 60 + ss
+
+
+def _is_finite_number(val) -> bool:
+    """判斷是否為有限的整數或浮點數（排除布林值）。"""
+    return not isinstance(val, bool) and isinstance(val, (int, float)) and math.isfinite(val)
+
+
+def _parse_point(val, label: str) -> tuple[float, float]:
+    """驗證二維座標點 [x, y]。"""
+    if not isinstance(val, (list, tuple)) or len(val) != 2:
+        raise ValueError(f"{label} 必須是兩個數字的座標 [x, y]")
+    if not (_is_finite_number(val[0]) and _is_finite_number(val[1])):
+        raise ValueError(f"{label} 的座標必須是有效數字")
+    return float(val[0]), float(val[1])
+
+
+def _parse_ruler(val) -> tuple[tuple[float, float], tuple[float, float]]:
+    """驗證尺的兩端座標 [[x1, y1], [x2, y2]]。"""
+    if not isinstance(val, (list, tuple)) or len(val) != 2:
+        raise ValueError("尺的座標必須包含兩個端點")
+    p1 = _parse_point(val[0], "尺的第一端")
+    p2 = _parse_point(val[1], "尺的第二端")
+    return p1, p2
+
+
+def find_moon_in_gray(gray: np.ndarray) -> tuple[bool, float | None, float | None, int]:
+    """在灰階圖中找月亮亮區：先用太陽偵測，找不到再以最亮 70%、面積 ≥ 20 尋找。"""
+    if gray.size == 0:
+        return False, None, None, 0
+    peak = int(gray.max())
+    found, sx, sy = skycam_tool._find_sun_in_gray(gray)
+    if found:
+        return True, float(sx), float(sy), peak
+    if peak < 10:
+        return False, None, None, peak
+
+    thresh = peak * 0.7
+    mask = gray >= thresh
+    total = int(mask.sum())
+    if total < 20 or total > gray.size * 0.5:
+        return False, None, None, peak
+
+    row_has = mask.any(axis=1)
+    active_rows = np.flatnonzero(row_has)
+    parent: list[int] = []
+    areas: list[int] = []
+    sum_xs: list[float] = []
+    sum_ys: list[float] = []
+
+    def find_root(idx: int) -> int:
+        while parent[idx] != idx:
+            parent[idx] = parent[parent[idx]]
+            idx = parent[idx]
+        return idx
+
+    def union(a: int, b: int) -> None:
+        ra = find_root(a)
+        rb = find_root(b)
+        if ra != rb:
+            if areas[ra] < areas[rb]:
+                ra, rb = rb, ra
+            parent[rb] = ra
+            areas[ra] += areas[rb]
+            sum_xs[ra] += sum_xs[rb]
+            sum_ys[ra] += sum_ys[rb]
+
+    prev_row = -2
+    prev_runs: list[tuple[int, int, int]] = []
+    width = gray.shape[1]
+    padded = np.empty(width + 2, dtype=bool)
+    padded[0] = False
+    padded[-1] = False
+
+    for r_np in active_rows:
+        r = int(r_np)
+        padded[1:-1] = mask[r]
+        changes = np.flatnonzero(padded[1:] != padded[:-1])
+        starts = changes[0::2]
+        ends = changes[1::2]
+        curr_runs: list[tuple[int, int, int]] = []
+        for s_np, e_np in zip(starts, ends):
+            s = int(s_np)
+            e = int(e_np)
+            length = e - s
+            nid = len(parent)
+            parent.append(nid)
+            areas.append(length)
+            sum_xs.append(0.5 * (s + e - 1) * length)
+            sum_ys.append(float(r * length))
+            curr_runs.append((s, e, nid))
+
+        if r == prev_row + 1 and prev_runs:
+            i = 0
+            j = 0
+            n_prev = len(prev_runs)
+            n_curr = len(curr_runs)
+            while i < n_prev and j < n_curr:
+                s1, e1, id1 = prev_runs[i]
+                s2, e2, id2 = curr_runs[j]
+                if s1 <= e2 and s2 <= e1:
+                    union(id1, id2)
+                if e1 <= e2:
+                    i += 1
+                else:
+                    j += 1
+
+        prev_row = r
+        prev_runs = curr_runs
+
+    best_root = -1
+    best_area = 0
+    for idx in range(len(parent)):
+        if parent[idx] == idx and areas[idx] > best_area:
+            best_area = areas[idx]
+            best_root = idx
+
+    if best_root >= 0 and best_area >= 20:
+        cx = sum_xs[best_root] / best_area
+        cy = sum_ys[best_root] / best_area
+        return True, cx, cy, peak
+    return False, None, None, peak
+
+
 def is_sun_found(val) -> bool:
     """判斷 sun_found 欄位是否代表有找到太陽。"""
     if isinstance(val, bool):
@@ -207,7 +376,7 @@ def parse_row_time(row: dict) -> tuple[str, int] | None:
     return f"{hour:02d}:{minute:02d}:{second:02d}", hour * 3600 + minute * 60 + second
 
 
-def compute_summary(date: str, rows: list[dict]) -> dict:
+def compute_summary(date_str: str, rows: list[dict]) -> dict:
     """依 analyze_day 的結果計算單日夕陽摘要物件。"""
     normal_items: list[tuple[int, str, str, dict]] = []
     dark_count = 0
@@ -265,7 +434,7 @@ def compute_summary(date: str, rows: list[dict]) -> dict:
         sky_avg_rgb_1700 = None
 
     return {
-        "date": date,
+        "date": date_str,
         "photos": len(normal_items),
         "dark_photos": dark_count,
         "sun_found": len(dark_sun_items),
@@ -336,7 +505,7 @@ def validate_camera_config(body: dict) -> dict[str, int]:
     if not isinstance(body, dict):
         raise ValueError("請提供至少一項相機設定")
     if not body:
-        return {}                     # 空的請求＝只讀取相機目前的設定
+        return {}
 
     allowed = {"flip", "dark_aec", "powersave", "txpower"}
     unknown = set(body.keys()) - allowed
@@ -405,17 +574,29 @@ class SkyCamApp:
         self.photos_dir = self.data_dir / "photos"
         self.analysis_dir = self.data_dir / "analysis"
         self.thumbs_dir = self.data_dir / "thumbs"
+        self.plant_dir = self.data_dir / "plant"
+        self.moon_dir = self.data_dir / "moon"
+        self.cloud_dir = self.data_dir / "cloud"
+        self.shadow_dir = self.data_dir / "shadow"
         self.settings_path = self.data_dir / "settings.json"
         self.share_log_path = self.data_dir / "share_log.jsonl"
 
         self.photos_dir.mkdir(parents=True, exist_ok=True)
         self.analysis_dir.mkdir(parents=True, exist_ok=True)
         self.thumbs_dir.mkdir(parents=True, exist_ok=True)
+        self.plant_dir.mkdir(parents=True, exist_ok=True)
+        self.moon_dir.mkdir(parents=True, exist_ok=True)
+        self.cloud_dir.mkdir(parents=True, exist_ok=True)
+        self.shadow_dir.mkdir(parents=True, exist_ok=True)
 
         self._settings_lock = threading.Lock()
         self._sync_lock = threading.Lock()
         self._log_lock = threading.Lock()
         self._fw_lock = threading.Lock()
+        self._plant_lock = threading.Lock()
+        self._moon_lock = threading.Lock()
+        self._cloud_lock = threading.Lock()
+        self._shadow_lock = threading.Lock()
 
         self._camera_fw = ""
         self._sync_state: dict = {
@@ -432,6 +613,10 @@ class SkyCamApp:
         return {
             "camera": "",
             "device_id": uuid.uuid4().hex,
+            "location": "臺北市",
+            "topic": "sunset",
+            "plant": {"roi": None},
+            "cloud": {"horizon_y": None, "threshold": 0.75},
             "share": {
                 "enabled": False,
                 "consent": False,
@@ -441,6 +626,64 @@ class SkyCamApp:
                 "auto": True,
             },
         }
+
+    def _fill_missing_settings(self, loaded: dict) -> tuple[dict, bool]:
+        """補齊缺少的設定鍵並回傳（補齊後字典, 是否有變更）。"""
+        defaults = self._default_settings()
+        changed = False
+        if "camera" not in loaded or not isinstance(loaded["camera"], str):
+            loaded["camera"] = defaults["camera"]
+            changed = True
+        if not loaded.get("device_id") or not isinstance(loaded["device_id"], str):
+            loaded["device_id"] = defaults["device_id"]
+            changed = True
+        if (
+            "location" not in loaded
+            or not isinstance(loaded["location"], str)
+            or loaded["location"] not in models.COUNTY_COORDS
+        ):
+            loaded["location"] = defaults["location"]
+            changed = True
+        if (
+            "topic" not in loaded
+            or not isinstance(loaded["topic"], str)
+            or loaded["topic"] not in VALID_TOPICS
+        ):
+            loaded["topic"] = defaults["topic"]
+            changed = True
+
+        plant = loaded.get("plant")
+        if not isinstance(plant, dict):
+            plant = {}
+            loaded["plant"] = plant
+            changed = True
+        if "roi" not in plant:
+            plant["roi"] = None
+            changed = True
+
+        cloud = loaded.get("cloud")
+        if not isinstance(cloud, dict):
+            cloud = {}
+            loaded["cloud"] = cloud
+            changed = True
+        if "horizon_y" not in cloud:
+            cloud["horizon_y"] = None
+            changed = True
+        if "threshold" not in cloud or not _is_finite_number(cloud["threshold"]):
+            cloud["threshold"] = 0.75
+            changed = True
+
+        share = loaded.get("share")
+        if not isinstance(share, dict):
+            share = {}
+            loaded["share"] = share
+            changed = True
+        for key, default_val in defaults["share"].items():
+            if key not in share:
+                share[key] = default_val
+                changed = True
+
+        return loaded, changed
 
     def _ensure_settings(self) -> None:
         """確保 settings.json 存在且包含完整必要鍵值。"""
@@ -459,23 +702,7 @@ class SkyCamApp:
             except (OSError, json.JSONDecodeError):
                 loaded = {}
 
-            changed = False
-            if "camera" not in loaded or not isinstance(loaded["camera"], str):
-                loaded["camera"] = defaults["camera"]
-                changed = True
-            if not loaded.get("device_id") or not isinstance(loaded["device_id"], str):
-                loaded["device_id"] = defaults["device_id"]
-                changed = True
-            share = loaded.get("share")
-            if not isinstance(share, dict):
-                share = {}
-                loaded["share"] = share
-                changed = True
-            for key, default_val in defaults["share"].items():
-                if key not in share:
-                    share[key] = default_val
-                    changed = True
-
+            loaded, changed = self._fill_missing_settings(loaded)
             if changed:
                 atomic_write_text(
                     self.settings_path,
@@ -483,11 +710,17 @@ class SkyCamApp:
                 )
 
     def get_settings(self) -> dict:
-        """安全讀取目前的 settings.json 內容。"""
+        """安全讀取目前的 settings.json 內容，缺少新鍵時自動補預設值。"""
         with self._settings_lock:
             try:
                 data = json.loads(self.settings_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
+                    data, changed = self._fill_missing_settings(data)
+                    if changed:
+                        atomic_write_text(
+                            self.settings_path,
+                            json.dumps(data, ensure_ascii=False, indent=2),
+                        )
                     return data
             except (OSError, json.JSONDecodeError):
                 pass
@@ -502,6 +735,63 @@ class SkyCamApp:
                 self.settings_path,
                 json.dumps(settings, ensure_ascii=False, indent=2),
             )
+
+    def get_location_coords(self) -> tuple[str, float, float]:
+        """取得目前設定縣市與其經緯度。"""
+        settings = self.get_settings()
+        loc = settings.get("location", "臺北市")
+        if loc not in models.COUNTY_COORDS:
+            loc = "臺北市"
+        lat, lon = models.COUNTY_COORDS[loc]
+        return loc, float(lat), float(lon)
+
+    def set_location(self, county: str) -> str:
+        """驗證並儲存所在縣市。"""
+        if not isinstance(county, str) or county.strip() not in models.COUNTY_COORDS:
+            raise ValueError("請從清單中選擇正確的縣市")
+        cleaned = county.strip()
+        settings = self.get_settings()
+        settings["location"] = cleaned
+        self.save_settings(settings)
+        return cleaned
+
+    def set_topic(self, topic: str, apply_camera: bool = False) -> dict:
+        """儲存觀察主題，並在需要時代理更新相機的拍照時間表。"""
+        if not isinstance(topic, str) or topic not in VALID_TOPICS:
+            raise ValueError("觀察主題必須是 sunset、plant、moon、cloud 或 shadow")
+        if not isinstance(apply_camera, bool):
+            raise ValueError("apply_camera 必須是布林值")
+
+        settings = self.get_settings()
+        settings["topic"] = topic
+        self.save_settings(settings)
+
+        result: dict = {
+            "ok": True,
+            "topic": topic,
+            "camera_schedule": None,
+        }
+        if not apply_camera:
+            return result
+
+        camera_url = settings.get("camera", "").strip()
+        if not camera_url:
+            result["warning"] = "尚未設定相機網址，已先儲存觀察主題"
+            return result
+
+        try:
+            sched = http_get_json(f"{camera_url}/schedule?preset={topic}", timeout=5.0)
+            result["camera_schedule"] = sched
+        except Exception:
+            result["warning"] = "連不到相機，已儲存觀察主題，但尚未更改相機的拍照時間表"
+        return result
+
+    def fetch_camera_schedule(self) -> dict:
+        """代理查詢目前已設定相機的 /schedule。"""
+        camera_url = self.get_settings().get("camera", "").strip()
+        if not camera_url:
+            raise ValueError("尚未設定相機網址，請先連線相機")
+        return http_get_json(f"{camera_url}/schedule", timeout=5.0)
 
     def set_camera_fw(self, fw: str) -> None:
         """記錄最近一次從相機狀態取得的韌體版本。"""
@@ -643,11 +933,11 @@ class SkyCamApp:
                 self._sync_state["finished_at"] = now_str()
                 self._sync_state["running"] = False
 
-    def _safe_photo_path(self, date: str, filename: str) -> Path:
+    def _safe_photo_path(self, date_str: str, filename: str) -> Path:
         """驗證日期與照片檔名並回傳受限於照片資料夾內的絕對路徑。"""
-        if not DATE_RE.fullmatch(date) or not PHOTO_RE.fullmatch(filename):
+        if not DATE_RE.fullmatch(date_str) or not PHOTO_RE.fullmatch(filename):
             raise ValueError("無效的日期或照片檔名")
-        target = (self.photos_dir / date / filename).resolve()
+        target = (self.photos_dir / date_str / filename).resolve()
         if not target.is_relative_to(self.photos_dir):
             raise ValueError("不允許的路徑存取")
         return target
@@ -661,11 +951,11 @@ class SkyCamApp:
             raise ValueError("不允許的路徑存取")
         return target
 
-    def get_day_info(self, date: str) -> dict:
+    def get_day_info(self, date_str: str) -> dict:
         """回傳指定日期的照片清單、分析檔案存在狀態與摘要。"""
-        if not DATE_RE.fullmatch(date):
+        if not DATE_RE.fullmatch(date_str):
             raise ValueError("日期格式必須是 8 位數字")
-        day_dir = (self.photos_dir / date).resolve()
+        day_dir = (self.photos_dir / date_str).resolve()
         if not day_dir.is_relative_to(self.photos_dir) or not day_dir.is_dir():
             raise FileNotFoundError("找不到這一天的照片資料夾")
 
@@ -682,24 +972,24 @@ class SkyCamApp:
                 )
 
         analysis = {
-            "csv": (self.analysis_dir / f"{date}.csv").is_file(),
-            "sun_trail": (self.analysis_dir / f"{date}_sun_trail.png").is_file(),
-            "sky_strip": (self.analysis_dir / f"{date}_sky_strip.png").is_file(),
-            "timelapse": (self.analysis_dir / f"{date}.mp4").is_file(),
+            "csv": (self.analysis_dir / f"{date_str}.csv").is_file(),
+            "sun_trail": (self.analysis_dir / f"{date_str}_sun_trail.png").is_file(),
+            "sky_strip": (self.analysis_dir / f"{date_str}_sky_strip.png").is_file(),
+            "timelapse": (self.analysis_dir / f"{date_str}.mp4").is_file(),
         }
 
-        summary = self._load_summary(date)
+        summary = self._load_summary(date_str)
         return {
             "ok": True,
-            "date": date,
+            "date": date_str,
             "photos": photos,
             "analysis": analysis,
             "summary": summary,
         }
 
-    def _load_summary(self, date: str) -> dict | None:
+    def _load_summary(self, date_str: str) -> dict | None:
         """讀取指定日期的摘要 JSON，若不存在或損毀則回傳 None。"""
-        summary_path = self.analysis_dir / f"{date}_summary.json"
+        summary_path = self.analysis_dir / f"{date_str}_summary.json"
         if not summary_path.is_file():
             return None
         try:
@@ -708,20 +998,20 @@ class SkyCamApp:
         except (OSError, json.JSONDecodeError):
             return None
 
-    def analyze_day_full(self, date: str) -> dict:
+    def analyze_day_full(self, date_str: str) -> dict:
         """執行單日照片分析、產生圖表與縮時影片並儲存摘要 JSON。"""
-        if not DATE_RE.fullmatch(date):
+        if not DATE_RE.fullmatch(date_str):
             raise ValueError("日期格式必須是 8 位數字")
-        day_dir = (self.photos_dir / date).resolve()
+        day_dir = (self.photos_dir / date_str).resolve()
         if not day_dir.is_relative_to(self.photos_dir) or not day_dir.is_dir():
             raise FileNotFoundError("找不到這一天的照片資料夾")
 
         self.analysis_dir.mkdir(parents=True, exist_ok=True)
-        csv_path = self.analysis_dir / f"{date}.csv"
-        sun_trail_path = self.analysis_dir / f"{date}_sun_trail.png"
-        sky_strip_path = self.analysis_dir / f"{date}_sky_strip.png"
-        timelapse_path = self.analysis_dir / f"{date}.mp4"
-        summary_path = self.analysis_dir / f"{date}_summary.json"
+        csv_path = self.analysis_dir / f"{date_str}.csv"
+        sun_trail_path = self.analysis_dir / f"{date_str}_sun_trail.png"
+        sky_strip_path = self.analysis_dir / f"{date_str}_sky_strip.png"
+        timelapse_path = self.analysis_dir / f"{date_str}.mp4"
+        summary_path = self.analysis_dir / f"{date_str}_summary.json"
 
         rows = skycam_tool.analyze_day(str(day_dir))
         skycam_tool.write_csv(rows, str(csv_path))
@@ -732,7 +1022,7 @@ class SkyCamApp:
         except Exception:
             pass
 
-        summary = compute_summary(date, rows)
+        summary = compute_summary(date_str, rows)
         atomic_write_text(summary_path, json.dumps(summary, ensure_ascii=False, indent=2))
         return summary
 
@@ -753,17 +1043,736 @@ class SkyCamApp:
         summaries.sort(key=lambda item: str(item.get("date", "")))
         return summaries
 
-    def get_photo_path(self, date: str, filename: str) -> Path:
+    def get_compare_with_models(self) -> dict:
+        """回傳多天比較摘要與對應日期的模型日落預測。"""
+        days = self.get_compare()
+        _loc, lat, lon = self.get_location_coords()
+        models_map: dict[str, dict] = {}
+        for item in days:
+            d_str = str(item.get("date", ""))
+            try:
+                d_obj = parse_date_yyyymmdd(d_str)
+            except ValueError:
+                continue
+            ev = models.sun_events(d_obj, lat, lon, tz_hours=8)
+            models_map[d_str] = {
+                "sunset": ev.get("sunset"),
+                "sunset_az": ev.get("sunset_az"),
+            }
+        return {"ok": True, "days": days, "models": models_map}
+
+    def get_sunset_model(self, date_str: str) -> dict:
+        """計算單日模型日出日落資料並與觀測最後看到太陽時間比較。"""
+        d_obj = parse_date_yyyymmdd(date_str)
+        location, lat, lon = self.get_location_coords()
+        ev = models.sun_events(d_obj, lat, lon, tz_hours=8)
+
+        summary = self._load_summary(date_str)
+        raw_obs = summary.get("last_sun_time") if summary else None
+        observed_last_sun_time = str(raw_obs).strip() if raw_obs else None
+        if observed_last_sun_time == "":
+            observed_last_sun_time = None
+
+        obs_sec = parse_hhmm_seconds(observed_last_sun_time)
+        model_sec = parse_hhmm_seconds(ev.get("sunset"))
+        if obs_sec is not None and model_sec is not None:
+            diff_minutes: float | None = round((obs_sec - model_sec) / 60.0, 1)
+        else:
+            diff_minutes = None
+
+        return {
+            "ok": True,
+            "date": date_str,
+            "location": location,
+            "model": ev,
+            "observed_last_sun_time": observed_last_sun_time,
+            "diff_minutes": diff_minutes,
+        }
+
+    # -------------------- 植物生長 --------------------
+
+    def set_plant_roi(self, body: dict) -> dict:
+        """驗證並儲存植物觀察的框選範圍（1600×1200 原圖像素座標）。"""
+        if not isinstance(body, dict):
+            raise ValueError("框選範圍格式不正確")
+        coords: dict[str, int] = {}
+        for key in ("x0", "y0", "x1", "y1"):
+            if key not in body:
+                raise ValueError("請提供完整的 x0、y0、x1、y1 座標")
+            val = body[key]
+            if isinstance(val, bool) or not isinstance(val, int):
+                raise ValueError(f"{key} 必須是整數")
+            coords[key] = val
+
+        x0, y0, x1, y1 = coords["x0"], coords["y0"], coords["x1"], coords["y1"]
+        if not (0 <= x0 < x1 <= 1600 and 0 <= y0 < y1 <= 1200):
+            raise ValueError("框選範圍必須在 1600×1200 以內，且 x0 < x1、y0 < y1")
+
+        roi = {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
+        settings = self.get_settings()
+        settings["plant"]["roi"] = roi
+        self.save_settings(settings)
+        return roi
+
+    def _load_json_dict(self, path: Path) -> dict:
+        if not path.is_file():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    def _load_json_list(self, path: Path) -> list:
+        if not path.is_file():
+            return []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, list) else []
+        except (OSError, json.JSONDecodeError):
+            return []
+
+    def get_plant_gcc(self, from_date: str | None, to_date: str | None) -> dict:
+        """計算日期區間內每張一般照片的綠度（GCC）並快取結果。"""
+        all_days = sorted(self.list_days())
+        if from_date is not None and from_date != "":
+            parse_date_yyyymmdd(from_date)
+        else:
+            from_date = all_days[0] if all_days else None
+        if to_date is not None and to_date != "":
+            parse_date_yyyymmdd(to_date)
+        else:
+            to_date = all_days[-1] if all_days else None
+
+        if from_date and to_date and from_date > to_date:
+            raise ValueError("開始日期不能晚於結束日期")
+
+        settings = self.get_settings()
+        roi = settings.get("plant", {}).get("roi")
+        if isinstance(roi, dict) and all(k in roi for k in ("x0", "y0", "x1", "y1")):
+            roi_key = f"{roi['x0']},{roi['y0']},{roi['x1']},{roi['y1']}"
+        else:
+            roi = None
+            roi_key = "full"
+
+        target_days = [
+            d for d in all_days if (from_date is None or d >= from_date) and (to_date is None or d <= to_date)
+        ]
+
+        cache_path = self.plant_dir / "gcc_cache.json"
+        with self._plant_lock:
+            cache = self._load_json_dict(cache_path)
+
+        tasks: list[tuple[str, str, Path, str]] = []
+        cached_points: dict[tuple[str, str], float] = {}
+
+        for d in target_days:
+            day_dir = self.photos_dir / d
+            if not day_dir.is_dir():
+                continue
+            for entry in sorted(day_dir.iterdir(), key=lambda p: p.name):
+                if not entry.is_file() or not PHOTO_RE.fullmatch(entry.name):
+                    continue
+                if entry.name.endswith("_d.jpg"):
+                    continue
+                try:
+                    st = entry.stat()
+                except OSError:
+                    continue
+                ckey = f"{d}/{entry.name}|{roi_key}|{st.st_mtime_ns}|{st.st_size}"
+                if ckey in cache and _is_finite_number(cache[ckey]):
+                    cached_points[(d, entry.name)] = float(cache[ckey])
+                else:
+                    tasks.append((d, entry.name, entry, ckey))
+
+        def compute_one(item: tuple[str, str, Path, str]) -> tuple[str, str, str, float] | None:
+            d_s, fname, path, ckey = item
+            try:
+                with Image.open(path) as img:
+                    rgb = np.asarray(img.convert("RGB"))
+                if roi is not None:
+                    h, w = rgb.shape[:2]
+                    x0 = max(0, min(w, int(roi["x0"])))
+                    x1 = max(0, min(w, int(roi["x1"])))
+                    y0 = max(0, min(h, int(roi["y0"])))
+                    y1 = max(0, min(h, int(roi["y1"])))
+                    if x0 < x1 and y0 < y1:
+                        mask = np.zeros((h, w), dtype=bool)
+                        mask[y0:y1, x0:x1] = True
+                        gcc_val = models.green_chromatic_coordinate(rgb, mask=mask)
+                    else:
+                        gcc_val = models.green_chromatic_coordinate(rgb, mask=None)
+                else:
+                    gcc_val = models.green_chromatic_coordinate(rgb, mask=None)
+                return d_s, fname, ckey, round(float(gcc_val), 6)
+            except Exception:
+                return None
+
+        new_entries: dict[str, float] = {}
+        if tasks:
+            if len(tasks) > 4:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                    results = list(executor.map(compute_one, tasks))
+            else:
+                results = [compute_one(t) for t in tasks]
+            for res in results:
+                if res is not None:
+                    d_s, fname, ckey, val = res
+                    cached_points[(d_s, fname)] = val
+                    new_entries[ckey] = val
+
+        if new_entries:
+            with self._plant_lock:
+                latest_cache = self._load_json_dict(cache_path)
+                latest_cache.update(new_entries)
+                atomic_write_text(cache_path, json.dumps(latest_cache, ensure_ascii=False))
+
+        points: list[dict] = []
+        for d_s, fname in sorted(cached_points.keys()):
+            points.append(
+                {
+                    "date": d_s,
+                    "time": f"{fname[0:2]}:{fname[2:4]}:{fname[4:6]}",
+                    "gcc": cached_points[(d_s, fname)],
+                }
+            )
+        return {"ok": True, "roi": roi, "points": points}
+
+    def save_plant_mark(self, body: dict) -> dict:
+        """根據尺與植物上下端像素位置計算植物高度並儲存標記。"""
+        if not isinstance(body, dict):
+            raise ValueError("標記資料格式不正確")
+        date_str = body.get("date")
+        name = body.get("name")
+        parse_photo_datetime(date_str, name)
+
+        r1, r2 = _parse_ruler(body.get("ruler"))
+        ruler_cm = body.get("ruler_cm")
+        if not _is_finite_number(ruler_cm) or float(ruler_cm) <= 0:
+            raise ValueError("尺的長度必須是大於 0 的數字")
+
+        base = _parse_point(body.get("base"), "植物底部")
+        top = _parse_point(body.get("top"), "植物頂端")
+
+        ruler_px = math.hypot(r2[0] - r1[0], r2[1] - r1[1])
+        if ruler_px <= 0:
+            raise ValueError("尺的兩端座標不能重合")
+
+        px_per_cm = ruler_px / float(ruler_cm)
+        plant_px = math.hypot(top[0] - base[0], top[1] - base[1])
+        height_cm = round(plant_px / px_per_cm, 2)
+        px_per_cm_r = round(px_per_cm, 4)
+
+        entry = {
+            "date": date_str,
+            "name": name,
+            "ruler": [[r1[0], r1[1]], [r2[0], r2[1]]],
+            "ruler_cm": float(ruler_cm),
+            "base": [base[0], base[1]],
+            "top": [top[0], top[1]],
+            "px_per_cm": px_per_cm_r,
+            "height_cm": height_cm,
+        }
+
+        marks_path = self.plant_dir / "marks.json"
+        with self._plant_lock:
+            marks = self._load_json_list(marks_path)
+            marks = [
+                m
+                for m in marks
+                if not (isinstance(m, dict) and m.get("date") == date_str and m.get("name") == name)
+            ]
+            marks.append(entry)
+            marks.sort(key=lambda m: (str(m.get("date", "")), str(m.get("name", ""))))
+            atomic_write_text(marks_path, json.dumps(marks, ensure_ascii=False, indent=2))
+
+        return {"ok": True, "height_cm": height_cm, "px_per_cm": px_per_cm_r}
+
+    def get_plant_growth(self) -> dict:
+        """回傳植物高度紀錄並在達 4 個不同日期時做邏輯斯生長曲線擬合。"""
+        marks_path = self.plant_dir / "marks.json"
+        with self._plant_lock:
+            raw_marks = self._load_json_list(marks_path)
+
+        valid_marks: list[tuple[datetime, dict]] = []
+        for m in raw_marks:
+            if not isinstance(m, dict):
+                continue
+            try:
+                dt = parse_photo_datetime(str(m.get("date", "")), str(m.get("name", "")))
+                h = float(m["height_cm"])
+            except (ValueError, KeyError, TypeError):
+                continue
+            valid_marks.append((dt, {"date": str(m["date"]), "name": str(m["name"]), "height_cm": h}))
+
+        valid_marks.sort(key=lambda item: (item[0], item[1]["name"]))
+        points = [item[1] for item in valid_marks]
+        distinct_dates = len({p["date"] for p in points})
+
+        fit: dict | None = None
+        if distinct_dates < 4:
+            fit_note = "資料少於 4 天，還不能畫生長曲線"
+        else:
+            dt0 = valid_marks[0][0]
+            ts = [(dt - dt0).total_seconds() / 86400.0 for dt, _ in valid_marks]
+            ys = [p["height_cm"] for p in points]
+            try:
+                raw_fit = models.logistic_fit(ts, ys)
+                fit = {
+                    "K": round(float(raw_fit["K"]), 4),
+                    "r": round(float(raw_fit["r"]), 4),
+                    "t0": round(float(raw_fit["t0"]), 4),
+                    "r2": round(float(raw_fit["r2"]), 4),
+                }
+                fit_note = (
+                    f"最多長到約 {fit['K']:.1f} 公分、長最快的是第 {fit['t0']:.1f} 天"
+                    f"（吻合度 R² = {fit['r2']:.2f}）"
+                )
+            except Exception as exc:
+                fit = None
+                fit_note = f"目前資料還無法擬合生長曲線（{exc}）"
+
+        return {"ok": True, "points": points, "fit": fit, "fit_note": fit_note}
+
+    # -------------------- 月亮 --------------------
+
+    def get_moon_day(self, date_str: str) -> dict:
+        """分析指定日期夜間暗曝光照片中的月亮位置並附上模型預測。"""
+        d_obj = parse_date_yyyymmdd(date_str)
+        day_dir = (self.photos_dir / date_str).resolve()
+        if not day_dir.is_relative_to(self.photos_dir) or not day_dir.is_dir():
+            raise FileNotFoundError("找不到這一天的照片資料夾")
+
+        location, lat, lon = self.get_location_coords()
+
+        cache_path = self.moon_dir / "moon_cache.json"
+        with self._moon_lock:
+            cache = self._load_json_dict(cache_path)
+
+        candidates: list[tuple[str, datetime, Path, str]] = []
+        for entry in sorted(day_dir.iterdir(), key=lambda p: p.name):
+            if not entry.is_file() or not PHOTO_RE.fullmatch(entry.name):
+                continue
+            if not entry.name.endswith("_d.jpg"):
+                continue
+            try:
+                dt = parse_photo_datetime(date_str, entry.name)
+            except ValueError:
+                continue
+            if not (dt.hour >= 18 or dt.hour <= 6):
+                continue
+            try:
+                st = entry.stat()
+            except OSError:
+                continue
+            ckey = f"{date_str}/{entry.name}|{st.st_mtime_ns}|{st.st_size}"
+            candidates.append((entry.name, dt, entry, ckey))
+
+        uncached = [c for c in candidates if c[3] not in cache]
+
+        def detect_one(item: tuple[str, datetime, Path, str]) -> tuple[str, dict]:
+            _name, _dt, path, ckey = item
+            try:
+                with Image.open(path) as img:
+                    gray = np.asarray(img.convert("L"))
+                found, cx, cy, peak = find_moon_in_gray(gray)
+            except Exception:
+                found, cx, cy, peak = False, None, None, 0
+            return ckey, {
+                "found": 1 if found else 0,
+                "x": round(float(cx), 1) if found and cx is not None else None,
+                "y": round(float(cy), 1) if found and cy is not None else None,
+                "peak": int(peak),
+            }
+
+        new_entries: dict[str, dict] = {}
+        if uncached:
+            if len(uncached) > 4:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                    results = list(executor.map(detect_one, uncached))
+            else:
+                results = [detect_one(u) for u in uncached]
+            for ckey, det in results:
+                cache[ckey] = det
+                new_entries[ckey] = det
+
+        if new_entries:
+            with self._moon_lock:
+                latest = self._load_json_dict(cache_path)
+                latest.update(new_entries)
+                atomic_write_text(cache_path, json.dumps(latest, ensure_ascii=False))
+
+        photos_out: list[dict] = []
+        found_count = 0
+        for name, dt, _path, ckey in candidates:
+            det = cache.get(ckey, {"found": 0, "x": None, "y": None, "peak": 0})
+            alt, az = models.moon_position(dt, lat, lon)
+            illum = models.moon_illumination(dt)
+            is_found = 1 if det.get("found") else 0
+            if is_found:
+                found_count += 1
+            photos_out.append(
+                {
+                    "name": name,
+                    "time": f"{dt.hour:02d}:{dt.minute:02d}:{dt.second:02d}",
+                    "found": is_found,
+                    "x": det.get("x"),
+                    "y": det.get("y"),
+                    "peak": int(det.get("peak", 0)),
+                    "model_alt": round(float(alt), 2),
+                    "model_az": round(float(az), 2),
+                    "fraction": round(float(illum["fraction"]), 3),
+                    "phase_name": str(illum["name"]),
+                }
+            )
+
+        events = models.moon_events(d_obj, lat, lon, tz_hours=8)
+        dt_21 = datetime(d_obj.year, d_obj.month, d_obj.day, 21, 0, 0, tzinfo=TZ_TAIPEI)
+        illum_21 = models.moon_illumination(dt_21)
+
+        return {
+            "ok": True,
+            "date": date_str,
+            "location": location,
+            "photos": photos_out,
+            "events": events,
+            "summary": {
+                "photos": len(photos_out),
+                "found": found_count,
+                "phase_name": str(illum_21["name"]),
+                "fraction": round(float(illum_21["fraction"]), 3),
+            },
+            "waxing": bool(illum_21.get("waxing", True)),
+        }
+
+    def get_moon_calendar(self, from_str: str | None, days_str: str | None) -> dict:
+        """產生未來 N 天月相與傍晚西方可見日期的月曆資料。"""
+        if from_str is None or from_str == "":
+            start_day = datetime.now(TZ_TAIPEI).date()
+        else:
+            start_day = parse_date_yyyymmdd(from_str)
+
+        if days_str is None or days_str == "":
+            n_days = 30
+        else:
+            try:
+                n_days = int(days_str)
+            except ValueError as exc:
+                raise ValueError("days 必須是 1 到 45 之間的整數") from exc
+            if not (1 <= n_days <= 45):
+                raise ValueError("days 必須是 1 到 45 之間的整數")
+
+        location, lat, lon = self.get_location_coords()
+        entries: list[dict] = []
+        for offset in range(n_days):
+            d_obj = start_day + timedelta(days=offset)
+            d_str = d_obj.strftime("%Y%m%d")
+            dt_21 = datetime(d_obj.year, d_obj.month, d_obj.day, 21, 0, 0, tzinfo=TZ_TAIPEI)
+            illum = models.moon_illumination(dt_21)
+            ev = models.moon_events(d_obj, lat, lon, tz_hours=8)
+            dt_1830 = datetime(d_obj.year, d_obj.month, d_obj.day, 18, 30, 0, tzinfo=TZ_TAIPEI)
+            alt_1830, az_1830 = models.moon_position(dt_1830, lat, lon)
+            evening_west = bool(alt_1830 > 5.0 and 200.0 <= az_1830 <= 340.0)
+            entries.append(
+                {
+                    "date": d_str,
+                    "phase_name": str(illum["name"]),
+                    "fraction": round(float(illum["fraction"]), 3),
+                    "waxing": bool(illum.get("waxing", True)),
+                    "moonrise": ev.get("moonrise"),
+                    "moonset": ev.get("moonset"),
+                    "evening_west": evening_west,
+                }
+            )
+        return {"ok": True, "location": location, "days": entries}
+
+    # -------------------- 雲量 --------------------
+
+    def save_cloud_settings(self, body: dict) -> dict:
+        """驗證並儲存雲量計算用的地平線位置與亮度門檻。"""
+        if not isinstance(body, dict):
+            raise ValueError("雲量設定格式不正確")
+        if "horizon_y" not in body and "threshold" not in body:
+            raise ValueError("請提供 horizon_y 或 threshold 設定")
+        unknown = set(body.keys()) - {"horizon_y", "threshold"}
+        if unknown:
+            raise ValueError("包含不支援的雲量設定項目")
+
+        settings = self.get_settings()
+        cloud_cfg = dict(settings.get("cloud", {"horizon_y": None, "threshold": 0.75}))
+
+        if "horizon_y" in body:
+            hy = body["horizon_y"]
+            if hy is None:
+                cloud_cfg["horizon_y"] = None
+            elif isinstance(hy, bool) or not isinstance(hy, int) or not (0 <= hy <= 1199):
+                raise ValueError("地平線高度 horizon_y 必須是 0 到 1199 的整數，或 null")
+            else:
+                cloud_cfg["horizon_y"] = hy
+
+        if "threshold" in body:
+            th = body["threshold"]
+            if not _is_finite_number(th) or not (0.4 <= float(th) <= 1.2):
+                raise ValueError("雲量門檻值 threshold 必須在 0.4 到 1.2 之間")
+            cloud_cfg["threshold"] = round(float(th), 4)
+
+        settings["cloud"] = cloud_cfg
+        self.save_settings(settings)
+        return cloud_cfg
+
+    def _fetch_openmeteo_cloud(self, date_str: str, location: str, lat: float, lon: float) -> tuple[list[dict], str]:
+        """取得 Open-Meteo 模型預報雲量並快取；離線或失敗時回傳空清單且不拋錯。"""
+        if os.environ.get("SKYCAM_OFFLINE", "").strip() == "1":
+            return [], "離線模式，沒有對照資料"
+
+        cache_path = self.cloud_dir / f"openmeteo_{date_str}.json"
+        with self._cloud_lock:
+            cached = self._load_json_dict(cache_path)
+        if cached.get("location") == location and isinstance(cached.get("reference"), list):
+            ref = cached["reference"]
+            if ref:
+                return ref, "這是天氣模型算的，不是實際觀測（資料來源：Open-Meteo）"
+            return [], "天氣模型沒有這一天的預報資料"
+
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={lat}&longitude={lon}&hourly=cloud_cover"
+            f"&timezone=Asia%2FTaipei&past_days=7&forecast_days=1"
+        )
+        try:
+            data = http_get_json(url, timeout=8.0)
+            hourly = data.get("hourly", {}) if isinstance(data, dict) else {}
+            times = hourly.get("time", []) if isinstance(hourly, dict) else []
+            covers = hourly.get("cloud_cover", []) if isinstance(hourly, dict) else []
+            prefix = f"{date_str[0:4]}-{date_str[4:6]}-{date_str[6:8]}T"
+            ref: list[dict] = []
+            for t_val, c_val in zip(times, covers):
+                if isinstance(t_val, str) and t_val.startswith(prefix) and _is_finite_number(c_val):
+                    ref.append({"hour": t_val[11:16], "cloud_cover": float(c_val)})
+            with self._cloud_lock:
+                atomic_write_text(
+                    cache_path,
+                    json.dumps({"location": location, "reference": ref}, ensure_ascii=False, indent=2),
+                )
+            if ref:
+                return ref, "這是天氣模型算的，不是實際觀測（資料來源：Open-Meteo）"
+            return [], "天氣模型沒有這一天的預報資料（僅提供最近 7 天）"
+        except Exception:
+            return [], "目前無法連線取得天氣模型預報雲量，僅顯示相機觀測結果"
+
+    def get_cloud_day(self, date_str: str) -> dict:
+        """計算指定日期每張一般照片的雲量，並附帶 Open-Meteo 天氣模型預報對照。"""
+        parse_date_yyyymmdd(date_str)
+        day_dir = (self.photos_dir / date_str).resolve()
+        if not day_dir.is_relative_to(self.photos_dir) or not day_dir.is_dir():
+            raise FileNotFoundError("找不到這一天的照片資料夾")
+
+        settings = self.get_settings()
+        cloud_cfg = settings.get("cloud", {})
+        horizon_y = cloud_cfg.get("horizon_y", None)
+        threshold = float(cloud_cfg.get("threshold", 0.75))
+        location, lat, lon = self.get_location_coords()
+
+        cache_path = self.cloud_dir / "cloud_cache.json"
+        with self._cloud_lock:
+            cache = self._load_json_dict(cache_path)
+
+        tasks: list[tuple[str, Path, str]] = []
+        cached_vals: dict[str, float] = {}
+        for entry in sorted(day_dir.iterdir(), key=lambda p: p.name):
+            if not entry.is_file() or not PHOTO_RE.fullmatch(entry.name):
+                continue
+            if entry.name.endswith("_d.jpg"):
+                continue
+            try:
+                st = entry.stat()
+            except OSError:
+                continue
+            ckey = f"{date_str}/{entry.name}|{horizon_y}|{threshold:.4f}|{st.st_mtime_ns}|{st.st_size}"
+            if ckey in cache and _is_finite_number(cache[ckey]):
+                cached_vals[entry.name] = float(cache[ckey])
+            else:
+                tasks.append((entry.name, entry, ckey))
+
+        def compute_one(item: tuple[str, Path, str]) -> tuple[str, str, float] | None:
+            fname, path, ckey = item
+            try:
+                with Image.open(path) as img:
+                    rgb = np.asarray(img.convert("RGB"))
+                if horizon_y is not None:
+                    h, w = rgb.shape[:2]
+                    hy = max(0, min(h, int(horizon_y)))
+                    if hy > 0:
+                        mask = np.zeros((h, w), dtype=bool)
+                        mask[:hy, :] = True
+                        cf = models.cloud_fraction(rgb, mask=mask, threshold=threshold)
+                    else:
+                        cf = 0.0
+                else:
+                    cf = models.cloud_fraction(rgb, mask=None, threshold=threshold)
+                return fname, ckey, round(float(cf), 4)
+            except Exception:
+                return None
+
+        new_entries: dict[str, float] = {}
+        if tasks:
+            if len(tasks) > 4:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                    results = list(executor.map(compute_one, tasks))
+            else:
+                results = [compute_one(t) for t in tasks]
+            for res in results:
+                if res is not None:
+                    fname, ckey, val = res
+                    cached_vals[fname] = val
+                    new_entries[ckey] = val
+
+        if new_entries:
+            with self._cloud_lock:
+                latest = self._load_json_dict(cache_path)
+                latest.update(new_entries)
+                atomic_write_text(cache_path, json.dumps(latest, ensure_ascii=False))
+
+        points = [
+            {
+                "time": f"{fname[0:2]}:{fname[2:4]}:{fname[4:6]}",
+                "cloud_fraction": cached_vals[fname],
+            }
+            for fname in sorted(cached_vals.keys())
+        ]
+
+        reference, reference_note = self._fetch_openmeteo_cloud(date_str, location, lat, lon)
+
+        return {
+            "ok": True,
+            "date": date_str,
+            "location": location,
+            "horizon_y": horizon_y,
+            "threshold": threshold,
+            "points": points,
+            "reference": reference,
+            "reference_note": reference_note,
+        }
+
+    # -------------------- 立竿影子 --------------------
+
+    def save_shadow_mark(self, body: dict) -> dict:
+        """根據尺與立竿影子端點計算影長與實測太陽高度角，並和模型對照。"""
+        if not isinstance(body, dict):
+            raise ValueError("影子標記格式不正確")
+        date_str = body.get("date")
+        name = body.get("name")
+        when = parse_photo_datetime(date_str, name)
+
+        r1, r2 = _parse_ruler(body.get("ruler"))
+        ruler_cm = body.get("ruler_cm")
+        if not _is_finite_number(ruler_cm) or float(ruler_cm) <= 0:
+            raise ValueError("尺的長度必須是大於 0 的數字")
+
+        stick_cm = body.get("stick_cm")
+        if not _is_finite_number(stick_cm) or float(stick_cm) <= 0:
+            raise ValueError("棒子高度必須是大於 0 的數字")
+
+        base = _parse_point(body.get("base"), "棒子底部")
+        tip = _parse_point(body.get("tip"), "影子尖端")
+
+        ruler_px = math.hypot(r2[0] - r1[0], r2[1] - r1[1])
+        if ruler_px <= 0:
+            raise ValueError("尺的兩端座標不能重合")
+
+        px_per_cm = ruler_px / float(ruler_cm)
+        shadow_px = math.hypot(tip[0] - base[0], tip[1] - base[1])
+        shadow_cm = shadow_px / px_per_cm
+
+        try:
+            alt_measured = float(models.shadow_to_sun_altitude(float(stick_cm), shadow_cm))
+        except (ValueError, ZeroDivisionError) as exc:
+            raise ValueError(f"無法用目前的影長計算太陽高度角：{exc}") from exc
+
+        location, lat, lon = self.get_location_coords()
+        alt_model, _az_model = models.sun_position(when, lat, lon)
+        alt_model_f = float(alt_model)
+        diff_f = alt_measured - alt_model_f
+
+        if alt_model_f <= 0:
+            expected_val = None
+        else:
+            raw_exp = models.expected_shadow_length(float(stick_cm), alt_model_f)
+            expected_val = round(float(raw_exp), 2) if raw_exp is not None else None
+
+        shadow_cm_r = round(float(shadow_cm), 2)
+        alt_measured_r = round(alt_measured, 2)
+        alt_model_r = round(alt_model_f, 2)
+        diff_r = round(diff_f, 2)
+
+        entry = {
+            "date": date_str,
+            "name": name,
+            "time": f"{when.hour:02d}:{when.minute:02d}:{when.second:02d}",
+            "location": location,
+            "ruler": [[r1[0], r1[1]], [r2[0], r2[1]]],
+            "ruler_cm": float(ruler_cm),
+            "base": [base[0], base[1]],
+            "tip": [tip[0], tip[1]],
+            "stick_cm": float(stick_cm),
+            "shadow_cm": shadow_cm_r,
+            "altitude_measured": alt_measured_r,
+            "altitude_model": alt_model_r,
+            "diff": diff_r,
+            "expected_shadow_cm": expected_val,
+        }
+
+        marks_path = self.shadow_dir / "marks.json"
+        with self._shadow_lock:
+            marks = self._load_json_list(marks_path)
+            marks = [
+                m
+                for m in marks
+                if not (isinstance(m, dict) and m.get("date") == date_str and m.get("name") == name)
+            ]
+            marks.append(entry)
+            marks.sort(key=lambda m: (str(m.get("date", "")), str(m.get("name", ""))))
+            atomic_write_text(marks_path, json.dumps(marks, ensure_ascii=False, indent=2))
+
+        return {
+            "ok": True,
+            "shadow_cm": shadow_cm_r,
+            "altitude_measured": alt_measured_r,
+            "altitude_model": alt_model_r,
+            "diff": diff_r,
+            "expected_shadow_cm": expected_val,
+        }
+
+    def list_shadow_marks(self) -> dict:
+        """回傳所有立竿影子標記與實測、模型高度角統計比較。"""
+        marks_path = self.shadow_dir / "marks.json"
+        with self._shadow_lock:
+            raw_marks = self._load_json_list(marks_path)
+
+        marks = [m for m in raw_marks if isinstance(m, dict)]
+        marks.sort(key=lambda m: (str(m.get("date", "")), str(m.get("name", ""))))
+
+        obs = [float(m["altitude_measured"]) for m in marks if _is_finite_number(m.get("altitude_measured")) and _is_finite_number(m.get("altitude_model"))]
+        pred = [float(m["altitude_model"]) for m in marks if _is_finite_number(m.get("altitude_measured")) and _is_finite_number(m.get("altitude_model"))]
+
+        try:
+            compare = models.compare_table(obs, pred)
+        except Exception:
+            compare = {"n": 0, "mean_diff": None, "mean_abs_diff": None, "max_abs_diff": None}
+
+        return {"ok": True, "marks": marks, "compare": compare}
+
+    def get_photo_path(self, date_str: str, filename: str) -> Path:
         """取得原始照片路徑，若不存在則拋出 FileNotFoundError。"""
-        path = self._safe_photo_path(date, filename)
+        path = self._safe_photo_path(date_str, filename)
         if not path.is_file():
             raise FileNotFoundError("找不到這張照片")
         return path
 
-    def get_or_make_thumb(self, date: str, filename: str) -> Path:
+    def get_or_make_thumb(self, date_str: str, filename: str) -> Path:
         """取得寬度 320 像素的縮圖路徑，尚未產生時自動建立快取。"""
-        orig_path = self.get_photo_path(date, filename)
-        thumb_path = (self.thumbs_dir / date / filename).resolve()
+        orig_path = self.get_photo_path(date_str, filename)
+        thumb_path = (self.thumbs_dir / date_str / filename).resolve()
         if not thumb_path.is_relative_to(self.thumbs_dir):
             raise ValueError("不允許的縮圖路徑")
 
@@ -810,11 +1819,11 @@ class SkyCamApp:
         self.save_settings(settings)
         return validated
 
-    def append_share_log(self, date: str, ok: bool, message: str) -> None:
+    def append_share_log(self, date_str: str, ok: bool, message: str) -> None:
         """在 share_log.jsonl 新增一筆分享紀錄。"""
         entry = {
             "at": now_str(),
-            "date": date,
+            "date": date_str,
             "ok": bool(ok),
             "message": str(message),
         }
@@ -845,7 +1854,7 @@ class SkyCamApp:
         entries.reverse()
         return entries[:limit]
 
-    def has_shared_successfully(self, date: str) -> bool:
+    def has_shared_successfully(self, date_str: str) -> bool:
         """檢查指定日期是否已經有成功分享的紀錄。"""
         with self._log_lock:
             if not self.share_log_path.is_file():
@@ -854,15 +1863,15 @@ class SkyCamApp:
         for line in lines:
             try:
                 item = json.loads(line)
-                if isinstance(item, dict) and item.get("date") == date and item.get("ok") is True:
+                if isinstance(item, dict) and item.get("date") == date_str and item.get("ok") is True:
                     return True
             except json.JSONDecodeError:
                 continue
         return False
 
-    def share_day(self, date: str) -> tuple[bool, str, int]:
+    def share_day(self, date_str: str) -> tuple[bool, str, int]:
         """將指定日期的夕陽摘要與太陽軌跡縮圖送給老師並寫入紀錄。"""
-        if not DATE_RE.fullmatch(date):
+        if not DATE_RE.fullmatch(date_str):
             return False, "日期格式必須是 8 位數字", 400
 
         share_url = get_share_url()
@@ -874,8 +1883,8 @@ class SkyCamApp:
         if not (share.get("enabled") is True and share.get("consent") is True):
             return False, "請先在「分享給老師」頁面勾選同意分享並儲存設定", 400
 
-        summary = self._load_summary(date)
-        sun_trail_path = self.analysis_dir / f"{date}_sun_trail.png"
+        summary = self._load_summary(date_str)
+        sun_trail_path = self.analysis_dir / f"{date_str}_sun_trail.png"
         if summary is None or not sun_trail_path.is_file():
             return False, "這一天還沒有完成夕陽分析，請先分析後再分享", 400
 
@@ -883,7 +1892,7 @@ class SkyCamApp:
             image_b64 = encode_sun_trail_base64(sun_trail_path)
         except Exception as exc:
             msg = f"壓縮太陽軌跡圖失敗：{exc}"
-            self.append_share_log(date, False, msg)
+            self.append_share_log(date_str, False, msg)
             return False, msg, 500
 
         payload = {
@@ -894,7 +1903,7 @@ class SkyCamApp:
             "nickname": str(share.get("nickname", "")),
             "class_code": str(share.get("class_code", "")),
             "county": str(share.get("county", "")),
-            "date": date,
+            "date": date_str,
             "camera_fw": self.get_camera_fw(),
             "summary": summary,
             "image": image_b64,
@@ -904,16 +1913,16 @@ class SkyCamApp:
             resp = post_json_follow_redirect(share_url, payload, timeout=30.0)
         except Exception as exc:
             msg = f"傳送失敗，請確認網路連線：{exc}"
-            self.append_share_log(date, False, msg)
+            self.append_share_log(date_str, False, msg)
             return False, msg, 502
 
         if resp.get("ok") is True:
             msg = str(resp.get("message") or "分享成功")
-            self.append_share_log(date, True, msg)
+            self.append_share_log(date_str, True, msg)
             return True, msg, 200
 
         msg = str(resp.get("error") or resp.get("message") or "接收端回應分享失敗")
-        self.append_share_log(date, False, msg)
+        self.append_share_log(date_str, False, msg)
         return False, msg, 502
 
     def start_auto_share_loop(self) -> None:
@@ -1090,7 +2099,9 @@ def make_handler(app: SkyCamApp):
 
         def do_GET(self) -> None:
             """分派處理所有 GET 頁面、API 與媒體檔案請求。"""
-            raw_path = urllib.parse.urlsplit(self.path).path
+            parsed = urllib.parse.urlsplit(self.path)
+            raw_path = parsed.path
+            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             if self._has_unsafe_path(raw_path):
                 self._send_json(400, {"ok": False, "error": "不允許的路徑"})
                 return
@@ -1122,16 +2133,113 @@ def make_handler(app: SkyCamApp):
                 self._send_json(200, status)
                 return
 
+            if raw_path == "/api/camera/schedule":
+                try:
+                    sched = app.fetch_camera_schedule()
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                except Exception:
+                    self._send_json(
+                        502,
+                        {"ok": False, "error": "連不到相機，無法讀取拍照時間表"},
+                    )
+                    return
+                self._send_json(200, sched)
+                return
+
             if raw_path == "/api/sync":
                 self._send_json(200, app.get_sync_status())
                 return
 
             if raw_path == "/api/compare":
-                self._send_json(200, {"ok": True, "days": app.get_compare()})
+                self._send_json(200, app.get_compare_with_models())
                 return
 
             if raw_path == "/api/share/log":
                 self._send_json(200, {"ok": True, "logs": app.read_share_log(30)})
+                return
+
+            if raw_path.startswith("/api/sunset/model/"):
+                rest = raw_path[len("/api/sunset/model/") :]
+                if "/" in rest:
+                    self._send_json(404, {"ok": False, "error": "找不到指定路徑"})
+                    return
+                date_str = urllib.parse.unquote(rest)
+                try:
+                    res = app.get_sunset_model(date_str)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, res)
+                return
+
+            if raw_path == "/api/plant/gcc":
+                from_vals = query.get("from")
+                to_vals = query.get("to")
+                from_date = from_vals[0] if from_vals else None
+                to_date = to_vals[0] if to_vals else None
+                try:
+                    res = app.get_plant_gcc(from_date, to_date)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, res)
+                return
+
+            if raw_path == "/api/plant/growth":
+                self._send_json(200, app.get_plant_growth())
+                return
+
+            if raw_path.startswith("/api/moon/day/"):
+                rest = raw_path[len("/api/moon/day/") :]
+                if "/" in rest:
+                    self._send_json(404, {"ok": False, "error": "找不到指定路徑"})
+                    return
+                date_str = urllib.parse.unquote(rest)
+                try:
+                    res = app.get_moon_day(date_str)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                except FileNotFoundError as exc:
+                    self._send_json(404, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, res)
+                return
+
+            if raw_path == "/api/moon/calendar":
+                from_vals = query.get("from")
+                days_vals = query.get("days")
+                from_str = from_vals[0] if from_vals else None
+                days_str = days_vals[0] if days_vals else None
+                try:
+                    res = app.get_moon_calendar(from_str, days_str)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, res)
+                return
+
+            if raw_path.startswith("/api/cloud/day/"):
+                rest = raw_path[len("/api/cloud/day/") :]
+                if "/" in rest:
+                    self._send_json(404, {"ok": False, "error": "找不到指定路徑"})
+                    return
+                date_str = urllib.parse.unquote(rest)
+                try:
+                    res = app.get_cloud_day(date_str)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                except FileNotFoundError as exc:
+                    self._send_json(404, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, res)
+                return
+
+            if raw_path == "/api/shadow/list":
+                self._send_json(200, app.list_shadow_marks())
                 return
 
             if raw_path.startswith("/api/day/"):
@@ -1139,9 +2247,9 @@ def make_handler(app: SkyCamApp):
                 if "/" in rest:
                     self._send_json(404, {"ok": False, "error": "找不到指定路徑"})
                     return
-                date = urllib.parse.unquote(rest)
+                date_str = urllib.parse.unquote(rest)
                 try:
-                    info = app.get_day_info(date)
+                    info = app.get_day_info(date_str)
                 except ValueError as exc:
                     self._send_json(400, {"ok": False, "error": str(exc)})
                     return
@@ -1156,10 +2264,10 @@ def make_handler(app: SkyCamApp):
                 if len(parts) != 2:
                     self._send_json(400, {"ok": False, "error": "無效的照片路徑"})
                     return
-                date = urllib.parse.unquote(parts[0])
+                date_str = urllib.parse.unquote(parts[0])
                 filename = urllib.parse.unquote(parts[1])
                 try:
-                    path = app.get_photo_path(date, filename)
+                    path = app.get_photo_path(date_str, filename)
                 except ValueError as exc:
                     self._send_json(400, {"ok": False, "error": str(exc)})
                     return
@@ -1174,10 +2282,10 @@ def make_handler(app: SkyCamApp):
                 if len(parts) != 2:
                     self._send_json(400, {"ok": False, "error": "無效的縮圖路徑"})
                     return
-                date = urllib.parse.unquote(parts[0])
+                date_str = urllib.parse.unquote(parts[0])
                 filename = urllib.parse.unquote(parts[1])
                 try:
-                    path = app.get_or_make_thumb(date, filename)
+                    path = app.get_or_make_thumb(date_str, filename)
                 except ValueError as exc:
                     self._send_json(400, {"ok": False, "error": str(exc)})
                     return
@@ -1226,6 +2334,63 @@ def make_handler(app: SkyCamApp):
                 self._send_json(200, {"ok": True, "message": "天空日記觀察站已結束，可以關閉這個視窗"})
                 app.stop_event.set()
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return
+
+            if raw_path == "/api/location":
+                county = body.get("county")
+                try:
+                    loc = app.set_location(county)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, {"ok": True, "location": loc})
+                return
+
+            if raw_path == "/api/topic":
+                topic = body.get("topic")
+                apply_camera = body.get("apply_camera", False)
+                try:
+                    res = app.set_topic(topic, apply_camera=apply_camera)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, res)
+                return
+
+            if raw_path == "/api/plant/roi":
+                try:
+                    roi = app.set_plant_roi(body)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, {"ok": True, "roi": roi})
+                return
+
+            if raw_path == "/api/plant/mark":
+                try:
+                    res = app.save_plant_mark(body)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, res)
+                return
+
+            if raw_path == "/api/cloud/settings":
+                try:
+                    cfg = app.save_cloud_settings(body)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, {"ok": True, "cloud": cfg})
+                return
+
+            if raw_path == "/api/shadow/mark":
+                try:
+                    res = app.save_shadow_mark(body)
+                except ValueError as exc:
+                    self._send_json(400, {"ok": False, "error": str(exc)})
+                    return
+                self._send_json(200, res)
                 return
 
             if raw_path == "/api/camera":
@@ -1293,9 +2458,9 @@ def make_handler(app: SkyCamApp):
                 if "/" in middle:
                     self._send_json(404, {"ok": False, "error": "找不到指定路徑"})
                     return
-                date = urllib.parse.unquote(middle)
+                date_str = urllib.parse.unquote(middle)
                 try:
-                    summary = app.analyze_day_full(date)
+                    summary = app.analyze_day_full(date_str)
                 except ValueError as exc:
                     self._send_json(400, {"ok": False, "error": str(exc)})
                     return
@@ -1313,10 +2478,10 @@ def make_handler(app: SkyCamApp):
                 if "/" in rest:
                     self._send_json(404, {"ok": False, "error": "找不到指定路徑"})
                     return
-                date = urllib.parse.unquote(rest)
-                ok, message, status = app.share_day(date)
+                date_str = urllib.parse.unquote(rest)
+                ok, message, status = app.share_day(date_str)
                 if ok:
-                    self._send_json(status, {"ok": True, "date": date, "message": message})
+                    self._send_json(status, {"ok": True, "date": date_str, "message": message})
                 else:
                     self._send_json(status, {"ok": False, "error": message})
                 return
@@ -1339,8 +2504,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     """啟動天空日記觀察站本機網頁伺服器與自動分享排程。"""
     args = parse_args(argv)
-    # Windows 沒有主控台視窗的安裝版裡 sys.stdout／sys.stderr 是 None，網頁伺服器寫紀錄會出錯、請求卡住；
-    # 改寫到資料夾裡的 skydiary.log（也方便學生把紀錄傳給老師看）。
     if sys.stdout is None or sys.stderr is None:
         try:
             Path(args.data).mkdir(parents=True, exist_ok=True)
@@ -1351,14 +2514,13 @@ def main(argv: list[str] | None = None) -> None:
             sys.stdout = log_file
         if sys.stderr is None:
             sys.stderr = log_file
-    # Windows 主控台常是 cp1252／cp950，印中文會出錯當掉；一律改成 UTF-8，印不出來的字用 ? 代替
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError, OSError):
             pass
     bundled_ffmpeg = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "ffmpeg_bin"
-    if bundled_ffmpeg.is_dir():          # 安裝版內附 ffmpeg（做縮時影片用），不必另外安裝
+    if bundled_ffmpeg.is_dir():
         os.environ["PATH"] = str(bundled_ffmpeg) + os.pathsep + os.environ.get("PATH", "")
     app = SkyCamApp(Path(args.data))
     handler_cls = make_handler(app)

@@ -13,6 +13,7 @@
       --accent: #e06b2b;
       --accent-dark: #c2551b;
       --sky: #2563eb;
+      --green: #15803d;
       --border: #dce4f0;
       --ok-bg: #e7f8ef;
       --ok-ink: #146c43;
@@ -43,7 +44,7 @@
     }
 
     .header-inner {
-      max-width: 1080px;
+      max-width: 1120px;
       margin: 0 auto;
       display: flex;
       align-items: baseline;
@@ -63,10 +64,11 @@
       padding: 3px 10px;
       border-radius: 999px;
       font-size: 0.88rem;
+      color: #ffffff;
     }
 
     .wrap {
-      max-width: 1080px;
+      max-width: 1120px;
       margin: 0 auto;
       padding: 16px;
     }
@@ -124,9 +126,9 @@
       border: 1px solid var(--border);
       background: var(--card);
       color: var(--ink);
-      padding: 10px 16px;
+      padding: 9px 15px;
       border-radius: 999px;
-      font-size: 0.98rem;
+      font-size: 0.96rem;
       font-weight: 600;
       cursor: pointer;
       transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -187,7 +189,12 @@
       font-size: 1rem;
       background: #ffffff;
       color: var(--ink);
-      min-width: 180px;
+      min-width: 160px;
+    }
+
+    input[type="range"] {
+      width: 220px;
+      accent-color: var(--sky);
     }
 
     input[type="text"]:focus,
@@ -201,11 +208,12 @@
       border: none;
       border-radius: 10px;
       padding: 10px 16px;
-      font-size: 0.98rem;
+      font-size: 0.96rem;
       font-weight: 600;
       cursor: pointer;
       background: var(--sky);
       color: #ffffff;
+      text-decoration: none;
     }
 
     .btn:hover {
@@ -225,6 +233,14 @@
       background: var(--accent-dark);
     }
 
+    .btn-green {
+      background: var(--green);
+    }
+
+    .btn-green:hover {
+      background: #166534;
+    }
+
     .btn-sub {
       background: #eaf0fa;
       color: #1e3a6d;
@@ -232,6 +248,11 @@
 
     .btn-sub:hover {
       background: #d8e4f7;
+    }
+
+    .btn-sub.active-mode {
+      background: var(--sky);
+      color: #ffffff;
     }
 
     .hint {
@@ -336,6 +357,26 @@
       display: block;
     }
 
+    .canvas-wrap {
+      margin-top: 12px;
+      position: relative;
+      display: inline-block;
+      max-width: 100%;
+    }
+
+    .work-canvas {
+      max-width: 100%;
+      max-height: 520px;
+      width: auto;
+      height: auto;
+      display: block;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0f172a;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
     .caption {
       margin: 6px 0 0 0;
       color: #36475c;
@@ -414,7 +455,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      margin: 12px 0;
+      margin: 10px 0;
       font-size: 1rem;
       cursor: pointer;
     }
@@ -434,9 +475,47 @@
       margin-bottom: 12px;
     }
 
+    .info-box {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e3a8a;
+      border-radius: 10px;
+      padding: 13px 15px;
+      margin-top: 10px;
+    }
+
     .notice-box ul {
       margin: 6px 0 0 0;
       padding-left: 20px;
+    }
+
+    .moon-hero {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .moon-svg-wrap {
+      width: 110px;
+      height: 110px;
+      flex: 0 0 110px;
+      background: #0f172a;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .star-tag {
+      display: inline-block;
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fcd34d;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 0.85rem;
+      font-weight: 700;
     }
 
     .hidden {
@@ -495,10 +574,10 @@
         padding: 12px;
       }
       nav.tabs button {
-        flex: 1 1 calc(50% - 8px);
+        flex: 1 1 calc(33% - 8px);
         text-align: center;
-        padding: 9px 10px;
-        font-size: 0.93rem;
+        padding: 8px 8px;
+        font-size: 0.9rem;
       }
       input[type="text"],
       input[type="number"],
@@ -516,8 +595,10 @@
   <header>
     <div class="header-inner">
       <h1>天空日記觀察站</h1>
-      <span class="version-badge" id="app-version">版本載入中...</span>
-      <button type="button" class="version-badge" id="btn-quit" style="cursor:pointer;border:0;margin-left:6px" title="關掉這個程式">結束程式</button>
+      <div>
+        <span class="version-badge" id="app-version">版本載入中...</span>
+        <button type="button" class="version-badge" id="btn-quit" style="cursor:pointer;border:0;margin-left:6px" title="關掉這個程式">結束程式</button>
+      </div>
     </div>
   </header>
 
@@ -532,10 +613,15 @@
       <button type="button" data-tab="album">相簿</button>
       <button type="button" data-tab="sunset">今天的夕陽</button>
       <button type="button" data-tab="compare">多天比較</button>
+      <button type="button" data-tab="plant">植物</button>
+      <button type="button" data-tab="moon">月亮</button>
+      <button type="button" data-tab="cloud">雲量</button>
+      <button type="button" data-tab="shadow">影子</button>
       <button type="button" data-tab="share">分享給老師</button>
       <button type="button" data-tab="settings">相機設定</button>
     </nav>
 
+    <!-- 連線 -->
     <section id="tab-connect" class="panel active">
       <div class="card">
         <h2>連接天空日記相機</h2>
@@ -546,6 +632,40 @@
         </div>
         <p class="hint" id="data-dir-hint"></p>
         <div class="scan-list" id="scan-results"></div>
+      </div>
+
+      <div class="card">
+        <h2>觀察主題與位置設定</h2>
+        <div class="form-grid">
+          <div class="field">
+            <label for="loc-county">我的位置（縣市）</label>
+            <div class="row">
+              <select id="loc-county"></select>
+              <button type="button" class="btn btn-sub" id="btn-save-location">儲存位置</button>
+            </div>
+            <span class="hint">用來計算太陽、月亮高度與天氣模型預報的經緯度。</span>
+          </div>
+
+          <div class="field">
+            <label for="topic-select">這台相機在觀察：</label>
+            <select id="topic-select">
+              <option value="sunset">夕陽</option>
+              <option value="plant">植物</option>
+              <option value="moon">月亮</option>
+              <option value="cloud">雲量</option>
+              <option value="shadow">影子</option>
+            </select>
+            <label class="check-row" for="topic-apply-camera" style="margin: 4px 0 0 0;">
+              <input type="checkbox" id="topic-apply-camera" checked>
+              <span>同時把相機的拍照時間表改成這個主題</span>
+            </label>
+            <div class="row" style="margin-top: 6px;">
+              <button type="button" class="btn" id="btn-save-topic">套用觀察主題</button>
+              <button type="button" class="btn btn-sub" id="btn-read-schedule">查看相機拍照時間表</button>
+            </div>
+            <span class="hint" id="schedule-summary"></span>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -572,6 +692,7 @@
       </div>
     </section>
 
+    <!-- 相簿 -->
     <section id="tab-album" class="panel">
       <div class="card">
         <div class="row">
@@ -594,6 +715,7 @@
       </div>
     </section>
 
+    <!-- 今天的夕陽 -->
     <section id="tab-sunset" class="panel">
       <div class="card">
         <div class="row">
@@ -603,6 +725,11 @@
           <a id="btn-download-csv" class="btn btn-sub hidden" href="#" download>下載 CSV 表格</a>
         </div>
         <p class="hint" id="analyze-hint">按下「分析這一天」後，會自動找出太陽軌跡、天空顏色變化與摘要數字。</p>
+
+        <div class="info-box hidden" id="sunset-model-box">
+          <div id="sunset-model-line" style="font-weight: 700;"></div>
+          <div class="hint" style="color: #1e40af; margin-top: 4px;">相機看到的日落通常比較早，因為遠方有房子或山擋住。</div>
+        </div>
       </div>
 
       <div class="card hidden" id="sunset-results">
@@ -641,13 +768,14 @@
       </div>
     </section>
 
+    <!-- 多天比較 -->
     <section id="tab-compare" class="panel">
       <div class="card">
         <div class="row" style="justify-content: space-between;">
           <h2 style="margin: 0;">多天夕陽變化比較</h2>
           <button type="button" class="btn btn-sub" id="btn-compare-reload">更新比較</button>
         </div>
-        <p class="caption">相機沒有移動的話，太陽的位置每天會慢慢往南（畫面左邊）移</p>
+        <p class="caption">相機沒有移動的話，太陽的位置每天會慢慢往南（畫面左邊）移。相機看到的日落通常比較早，因為遠方有房子或山擋住。</p>
         <div class="svg-box" id="compare-chart"></div>
       </div>
 
@@ -659,6 +787,7 @@
               <tr>
                 <th>日期</th>
                 <th>最後看到太陽的時間</th>
+                <th>模型預測日落（方位）</th>
                 <th>16:30 太陽的水平位置</th>
                 <th>17:00 天空顏色</th>
               </tr>
@@ -670,6 +799,236 @@
       </div>
     </section>
 
+    <!-- 植物 -->
+    <section id="tab-plant" class="panel">
+      <div class="card">
+        <h2>植物生長觀察</h2>
+        <div class="row">
+          <label for="plant-day"><strong>日期：</strong></label>
+          <select id="plant-day"></select>
+          <label for="plant-photo"><strong>照片：</strong></label>
+          <select id="plant-photo"></select>
+        </div>
+
+        <div class="row" style="margin-top: 12px;">
+          <button type="button" class="btn btn-sub active-mode" id="btn-plant-mode-roi">框選植物範圍</button>
+          <button type="button" class="btn btn-sub" id="btn-plant-mode-height">量高度</button>
+          <label for="plant-ruler-cm">尺的長度（公分）：</label>
+          <input type="number" id="plant-ruler-cm" min="0.1" step="0.1" value="10" style="width: 100px; min-width: 90px;">
+          <button type="button" class="btn btn-sub" id="btn-plant-reset-pts">重新點選</button>
+        </div>
+
+        <div class="info-box" id="plant-step-hint">
+          目前模式：框選植物範圍。請在下方照片上按住並拖曳出長方形，把植物框起來。
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="plant-canvas" class="work-canvas" width="800" height="600"></canvas>
+        </div>
+        <p class="hint" id="plant-roi-info">尚未框選植物範圍（預設計算整張照片的綠度）。</p>
+        <p class="hint" id="plant-measure-info"></p>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content: space-between;">
+          <h2 style="margin: 0;">植物綠度變化（GCC）</h2>
+          <div class="row">
+            <label for="plant-gcc-from">從</label>
+            <select id="plant-gcc-from"></select>
+            <label for="plant-gcc-to">到</label>
+            <select id="plant-gcc-to"></select>
+            <button type="button" class="btn btn-green" id="btn-plant-gcc">計算綠度</button>
+          </div>
+        </div>
+        <p class="hint">綠度數值越高，表示畫面裡綠色葉子的比例越明顯。</p>
+        <div class="svg-box" id="plant-gcc-chart"></div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content: space-between;">
+          <h2 style="margin: 0;">植物高度生長曲線</h2>
+          <button type="button" class="btn btn-sub" id="btn-plant-growth-reload">更新曲線</button>
+        </div>
+        <p class="info-box" id="plant-fit-note" style="margin-bottom: 8px;">尚未量測植物高度。</p>
+        <div class="svg-box" id="plant-growth-chart"></div>
+      </div>
+    </section>
+
+    <!-- 月亮 -->
+    <section id="tab-moon" class="panel">
+      <div class="card">
+        <h2>月亮觀察</h2>
+        <div class="notice-box" style="margin-bottom: 12px;">
+          這台相機視野很廣，月亮在畫面上很小，主要記錄位置和亮度。
+        </div>
+        <div class="row">
+          <label for="moon-day"><strong>選擇日期：</strong></label>
+          <select id="moon-day"></select>
+          <button type="button" class="btn" id="btn-moon-reload">讀取這一天</button>
+        </div>
+
+        <div class="moon-hero" style="margin-top: 14px;">
+          <div class="moon-svg-wrap" id="moon-phase-svg"></div>
+          <div class="status-grid" style="flex: 1;">
+            <div class="stat-box"><div class="stat-label">當天 21:00 月相</div><div class="stat-val" id="moon-phase-name">-</div></div>
+            <div class="stat-box"><div class="stat-label">亮面比例</div><div class="stat-val" id="moon-fraction">-</div></div>
+            <div class="stat-box"><div class="stat-label">月出時間</div><div class="stat-val" id="moon-rise">-</div></div>
+            <div class="stat-box"><div class="stat-label">月落時間</div><div class="stat-val" id="moon-set">-</div></div>
+            <div class="stat-box"><div class="stat-label">夜間暗曝光／拍到月亮</div><div class="stat-val" id="moon-found-count">-</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>當天夜間照片月亮紀錄</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>時間</th>
+                <th>有沒有拍到</th>
+                <th>相機畫面位置（最亮值）</th>
+                <th>模型高度／方位</th>
+                <th>亮面比例</th>
+              </tr>
+            </thead>
+            <tbody id="moon-day-tbody"></tbody>
+          </table>
+        </div>
+        <p class="hint hidden" id="moon-day-empty">這一天沒有 18:00～06:59 的暗曝光（_d.jpg）照片。</p>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content: space-between;">
+          <h2 style="margin: 0;">接下來 30 天月相月曆</h2>
+          <button type="button" class="btn btn-sub" id="btn-moon-cal-reload">更新月曆</button>
+        </div>
+        <p class="hint">標有「★ 傍晚西方看得到」的日子，在傍晚 18:30 往西方天空就能看到月亮（高度大於 5°）。</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>月相</th>
+                <th>亮面比例</th>
+                <th>月出</th>
+                <th>月落</th>
+                <th>傍晚西方觀察</th>
+              </tr>
+            </thead>
+            <tbody id="moon-cal-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 雲量 -->
+    <section id="tab-cloud" class="panel">
+      <div class="card">
+        <h2>天空雲量觀察</h2>
+        <div class="row">
+          <label for="cloud-day"><strong>日期：</strong></label>
+          <select id="cloud-day"></select>
+          <label for="cloud-photo"><strong>預覽照片：</strong></label>
+          <select id="cloud-photo"></select>
+          <button type="button" class="btn" id="btn-cloud-reload">重新計算雲量</button>
+        </div>
+
+        <div class="row" style="margin-top: 12px;">
+          <label for="cloud-threshold"><strong>雲量判斷門檻（0.4～1.2）：</strong></label>
+          <input type="range" id="cloud-threshold" min="0.4" max="1.2" step="0.05" value="0.75">
+          <strong id="cloud-threshold-val">0.75</strong>
+          <button type="button" class="btn btn-sub" id="btn-cloud-save">套用門檻與地平線</button>
+          <button type="button" class="btn btn-sub" id="btn-cloud-clear-horizon">整張都算天空</button>
+        </div>
+        <p class="hint">在下方照片上上下拖曳紅線，設定「地平線」位置（紅線以上才算天空，避免把房子和樹算成雲）。</p>
+
+        <div class="canvas-wrap">
+          <canvas id="cloud-canvas" class="work-canvas" width="800" height="600"></canvas>
+        </div>
+        <p class="hint" id="cloud-horizon-info">目前地平線：未設定（整張照片都算天空）。</p>
+      </div>
+
+      <div class="card">
+        <h2>雲量變化圖（相機觀測 vs 天氣模型預報）</h2>
+        <div class="notice-box" id="cloud-ref-note">
+          虛線是天氣模型算的預報雲量，不是實際觀測。
+        </div>
+        <div class="svg-box" id="cloud-chart"></div>
+      </div>
+    </section>
+
+    <!-- 影子 -->
+    <section id="tab-shadow" class="panel">
+      <div class="card">
+        <h2>立竿見影（量太陽高度角）</h2>
+        <div class="notice-box">
+          <strong>拍攝方式說明：</strong>請把相機架在<strong>正上方往下拍</strong>，地面上立一根直立的小棒子，旁邊平放一把看得到刻度的尺。
+        </div>
+        <div class="row">
+          <label for="shadow-day"><strong>日期：</strong></label>
+          <select id="shadow-day"></select>
+          <label for="shadow-photo"><strong>照片：</strong></label>
+          <select id="shadow-photo"></select>
+        </div>
+        <div class="row" style="margin-top: 10px;">
+          <label for="shadow-ruler-cm">尺的長度（公分）：</label>
+          <input type="number" id="shadow-ruler-cm" min="0.1" step="0.1" value="10" style="width: 100px; min-width: 90px;">
+          <label for="shadow-stick-cm">棒子高度（公分）：</label>
+          <input type="number" id="shadow-stick-cm" min="0.1" step="0.1" value="10" style="width: 100px; min-width: 90px;">
+          <button type="button" class="btn btn-sub" id="btn-shadow-reset">重新點選</button>
+        </div>
+
+        <div class="info-box" id="shadow-step-hint">
+          請依序在照片上點 4 個位置：1. 尺的第一端 → 2. 尺的第二端 → 3. 棒子底部 → 4. 影子尖端。
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="shadow-canvas" class="work-canvas" width="800" height="600"></canvas>
+        </div>
+
+        <div class="status-grid hidden" id="shadow-result-grid">
+          <div class="stat-box"><div class="stat-label">量到的影長</div><div class="stat-val" id="sh-len">-</div></div>
+          <div class="stat-box"><div class="stat-label">實測太陽高度角</div><div class="stat-val" id="sh-alt-obs">-</div></div>
+          <div class="stat-box"><div class="stat-label">模型太陽高度角</div><div class="stat-val" id="sh-alt-mod">-</div></div>
+          <div class="stat-box"><div class="stat-label">實測 − 模型相差</div><div class="stat-val" id="sh-diff">-</div></div>
+          <div class="stat-box"><div class="stat-label">模型預期影長</div><div class="stat-val" id="sh-exp">-</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content: space-between;">
+          <h2 style="margin: 0;">所有影子標記與對照統計</h2>
+          <button type="button" class="btn btn-sub" id="btn-shadow-list-reload">更新列表</button>
+        </div>
+        <div class="status-grid" id="shadow-compare-grid">
+          <div class="stat-box"><div class="stat-label">總標記筆數</div><div class="stat-val" id="sh-cmp-n">0</div></div>
+          <div class="stat-box"><div class="stat-label">平均差（實測 − 模型）</div><div class="stat-val" id="sh-cmp-mean">-</div></div>
+          <div class="stat-box"><div class="stat-label">平均絕對差</div><div class="stat-val" id="sh-cmp-mae">-</div></div>
+          <div class="stat-box"><div class="stat-label">最大絕對差</div><div class="stat-val" id="sh-cmp-max">-</div></div>
+        </div>
+        <div class="table-wrap" style="margin-top: 10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>時間</th>
+                <th>棒高（公分）</th>
+                <th>影長（公分）</th>
+                <th>實測太陽高度</th>
+                <th>模型太陽高度</th>
+                <th>相差</th>
+                <th>預期影長</th>
+              </tr>
+            </thead>
+            <tbody id="shadow-tbody"></tbody>
+          </table>
+        </div>
+        <p class="hint hidden" id="shadow-empty">目前還沒有影子標記，請在上方照片點選尺和影子來量量看。</p>
+      </div>
+    </section>
+
+    <!-- 分享給老師 -->
     <section id="tab-share" class="panel">
       <div class="card hidden" id="share-disabled-box">
         <h2>分享給老師</h2>
@@ -743,6 +1102,7 @@
       </div>
     </section>
 
+    <!-- 相機設定 -->
     <section id="tab-settings" class="panel">
       <div class="card">
         <h2>相機設定</h2>
@@ -805,11 +1165,31 @@
         "臺東縣", "澎湖縣", "金門縣", "連江縣"
       ];
 
+      const SVG_NS = "http://www.w3.org/2000/svg";
+
       let appState = null;
       let syncTimer = null;
       let albumPhotos = [];
       let albumDate = "";
       let lightboxIndex = -1;
+
+      // 植物 canvas 狀態
+      let plantImg = null;
+      let plantMode = "roi";
+      let plantRoi = null;
+      let plantDragStart = null;
+      let plantDragCurr = null;
+      let plantClicks = [];
+      let plantLastHeight = null;
+
+      // 雲量 canvas 狀態
+      let cloudImg = null;
+      let cloudHorizonY = null;
+      let cloudDragging = false;
+
+      // 影子 canvas 狀態
+      let shadowImg = null;
+      let shadowClicks = [];
 
       const msgBar = document.getElementById("msg-bar");
       const msgText = document.getElementById("msg-text");
@@ -844,6 +1224,15 @@
         return data;
       }
 
+      function makeSvgEl(tag, attrs, text) {
+        const el = document.createElementNS(SVG_NS, tag);
+        for (const k in attrs) {
+          el.setAttribute(k, String(attrs[k]));
+        }
+        if (text !== undefined) el.textContent = text;
+        return el;
+      }
+
       function formatDate(d) {
         if (!d || d.length !== 8) return d || "-";
         return d.slice(0, 4) + "/" + d.slice(4, 6) + "/" + d.slice(6, 8);
@@ -857,18 +1246,37 @@
         return y + m + d;
       }
 
-      function initCountySelect() {
-        const sel = document.getElementById("share-county");
-        sel.innerHTML = "";
+      function canvasCoords(canvas, ev) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (ev.clientX - rect.left) * (canvas.width / Math.max(1, rect.width));
+        const y = (ev.clientY - rect.top) * (canvas.height / Math.max(1, rect.height));
+        return [
+          Math.max(0, Math.min(canvas.width, x)),
+          Math.max(0, Math.min(canvas.height, y))
+        ];
+      }
+
+      function initCountySelects() {
+        const shareSel = document.getElementById("share-county");
+        shareSel.innerHTML = "";
         const placeholder = document.createElement("option");
         placeholder.value = "";
         placeholder.textContent = "請選擇縣市";
-        sel.appendChild(placeholder);
+        shareSel.appendChild(placeholder);
+
+        const locSel = document.getElementById("loc-county");
+        locSel.innerHTML = "";
+
         for (const c of COUNTIES) {
-          const opt = document.createElement("option");
-          opt.value = c;
-          opt.textContent = c;
-          sel.appendChild(opt);
+          const opt1 = document.createElement("option");
+          opt1.value = c;
+          opt1.textContent = c;
+          shareSel.appendChild(opt1);
+
+          const opt2 = document.createElement("option");
+          opt2.value = c;
+          opt2.textContent = c;
+          locSel.appendChild(opt2);
         }
       }
 
@@ -887,6 +1295,18 @@
           loadCompare();
         } else if (tabName === "share") {
           loadShareLog();
+        } else if (tabName === "plant") {
+          loadPlantDayPhotos();
+          loadPlantGcc();
+          loadPlantGrowth();
+        } else if (tabName === "moon") {
+          loadMoonDay();
+          loadMoonCalendar();
+        } else if (tabName === "cloud") {
+          loadCloudDayAll();
+        } else if (tabName === "shadow") {
+          loadShadowDayPhotos();
+          loadShadowList();
         }
       }
 
@@ -899,7 +1319,13 @@
       function fillDaySelects(days) {
         const targets = [
           document.getElementById("album-day"),
-          document.getElementById("sunset-day")
+          document.getElementById("sunset-day"),
+          document.getElementById("plant-day"),
+          document.getElementById("plant-gcc-from"),
+          document.getElementById("plant-gcc-to"),
+          document.getElementById("moon-day"),
+          document.getElementById("cloud-day"),
+          document.getElementById("shadow-day")
         ];
         targets.forEach(function (sel) {
           const prev = sel.value;
@@ -911,7 +1337,8 @@
             sel.appendChild(opt);
             return;
           }
-          days.forEach(function (day) {
+          const ordered = sel.id === "plant-gcc-from" ? days.slice().reverse() : days;
+          ordered.forEach(function (day) {
             const opt = document.createElement("option");
             opt.value = day;
             opt.textContent = formatDate(day) + "（" + day + "）";
@@ -920,7 +1347,7 @@
           if (days.includes(prev)) {
             sel.value = prev;
           } else {
-            sel.value = days[0];
+            sel.value = ordered[0];
           }
         });
       }
@@ -931,7 +1358,7 @@
         const timeVal = st.time || st.clock || st.now || "-";
         document.getElementById("st-time").textContent = String(timeVal);
 
-        const todayVal = st.shots_today !== undefined ? st.shots_today : "-";   // 相機 /status 的欄位名稱
+        const todayVal = st.shots_today !== undefined ? st.shots_today : "-";
         document.getElementById("st-today").textContent = todayVal === "-" ? "-" : (String(todayVal) + " 張");
 
         let sdText = "-";
@@ -965,7 +1392,6 @@
         }
       }
 
-      // 相機目前的設定（畫面方向、暗曝光、省電、發射功率）要另外讀相機的 /config
       async function loadCameraConfig() {
         try {
           const c = await apiFetch("/api/camera/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
@@ -973,16 +1399,19 @@
           if (c.powersave !== undefined) document.getElementById("cfg-powersave").checked = Boolean(c.powersave);
           if (c.dark_aec !== undefined) document.getElementById("cfg-dark-aec").value = Number(c.dark_aec);
           if (c.txpower !== undefined) document.getElementById("cfg-txpower").value = Number(c.txpower);
-        } catch (err) { /* 舊版韌體沒有某些設定，略過 */ }
+        } catch (err) { /* 略過 */ }
       }
 
-      // 結束程式：安裝版沒有視窗，要用這個按鈕把背景的程式關掉
-      document.addEventListener("DOMContentLoaded", () => {
+      document.addEventListener("DOMContentLoaded", function () {
         const q = document.getElementById("btn-quit");
-        if (q) q.addEventListener("click", async () => {
-          try { await apiFetch("/api/quit", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); } catch (e) { /* 程式已關閉 */ }
-          document.body.innerHTML = '<div style="padding:48px 20px;text-align:center;font-size:20px">天空日記觀察站已結束，可以關閉這個視窗。<br>下次要用時，再打開 SkyDiary 就好。</div>';
-        });
+        if (q) {
+          q.addEventListener("click", async function () {
+            try {
+              await apiFetch("/api/quit", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+            } catch (e) { /* 程式已關閉 */ }
+            document.body.innerHTML = '<div style="padding:48px 20px;text-align:center;font-size:20px">天空日記觀察站已結束，可以關閉這個視窗。<br>下次要用時，再打開 SkyDiary 就好。</div>';
+          });
+        }
       });
 
       async function loadState() {
@@ -999,6 +1428,23 @@
         if (settings.camera) {
           document.getElementById("camera-input").value = settings.camera;
         }
+        if (settings.location) {
+          document.getElementById("loc-county").value = settings.location;
+        }
+        if (settings.topic) {
+          document.getElementById("topic-select").value = settings.topic;
+        }
+
+        plantRoi = (settings.plant && settings.plant.roi) || null;
+        updatePlantRoiLabel();
+
+        const cloudCfg = settings.cloud || {};
+        cloudHorizonY = cloudCfg.horizon_y !== undefined ? cloudCfg.horizon_y : null;
+        const thVal = cloudCfg.threshold !== undefined ? Number(cloudCfg.threshold) : 0.75;
+        document.getElementById("cloud-threshold").value = String(thVal);
+        document.getElementById("cloud-threshold-val").textContent = thVal.toFixed(2);
+        updateCloudHorizonLabel();
+
         fillDaySelects(appState.days || []);
 
         const share = settings.share || {};
@@ -1017,6 +1463,61 @@
         }
         pollSyncOnce();
       }
+
+      document.getElementById("btn-save-location").addEventListener("click", async function () {
+        const county = document.getElementById("loc-county").value;
+        this.disabled = true;
+        try {
+          const res = await apiFetch("/api/location", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ county: county })
+          });
+          showMessage("已更新我的位置：" + res.location, "ok");
+        } catch (err) {
+          showMessage(err.message, "err");
+        } finally {
+          this.disabled = false;
+        }
+      });
+
+      document.getElementById("btn-save-topic").addEventListener("click", async function () {
+        const topic = document.getElementById("topic-select").value;
+        const applyCam = document.getElementById("topic-apply-camera").checked;
+        this.disabled = true;
+        try {
+          const res = await apiFetch("/api/topic", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic: topic, apply_camera: applyCam })
+          });
+          if (res.warning) {
+            showMessage(res.warning, "info");
+          } else if (res.camera_schedule) {
+            document.getElementById("schedule-summary").textContent = "相機拍照時間表已更新：" + JSON.stringify(res.camera_schedule);
+            showMessage("已儲存觀察主題並更新相機拍照時間表！", "ok");
+          } else {
+            showMessage("已儲存觀察主題！", "ok");
+          }
+        } catch (err) {
+          showMessage(err.message, "err");
+        } finally {
+          this.disabled = false;
+        }
+      });
+
+      document.getElementById("btn-read-schedule").addEventListener("click", async function () {
+        this.disabled = true;
+        try {
+          const sched = await apiFetch("/api/camera/schedule");
+          document.getElementById("schedule-summary").textContent = "相機目前時間表：" + JSON.stringify(sched);
+          showMessage("已讀取相機的拍照時間表", "ok");
+        } catch (err) {
+          showMessage(err.message, "err");
+        } finally {
+          this.disabled = false;
+        }
+      });
 
       async function refreshCameraStatus(silent) {
         try {
@@ -1164,6 +1665,7 @@
         }
       });
 
+      // -------------------- 相簿 --------------------
       function buildPhotoCard(date, photo, index) {
         const card = document.createElement("div");
         card.className = "photo-card";
@@ -1263,6 +1765,7 @@
         }
       });
 
+      // -------------------- 今天的夕陽 --------------------
       function renderSummaryTable(summary) {
         const tbody = document.getElementById("summary-tbody");
         tbody.innerHTML = "";
@@ -1319,6 +1822,33 @@
         }
       }
 
+      async function loadSunsetModel(date) {
+        const box = document.getElementById("sunset-model-box");
+        const line = document.getElementById("sunset-model-line");
+        if (!date) {
+          box.classList.add("hidden");
+          return;
+        }
+        try {
+          const res = await apiFetch("/api/sunset/model/" + date);
+          const m = res.model || {};
+          const sunsetTime = m.sunset || "無資料";
+          const sunsetAz = typeof m.sunset_az === "number" ? (m.sunset_az.toFixed(1) + "°") : "-";
+          const obsTime = res.observed_last_sun_time || "尚未分析或未拍到";
+          let diffText = "";
+          if (typeof res.diff_minutes === "number") {
+            const sign = res.diff_minutes > 0 ? "+" : "";
+            diffText = "（差 " + sign + res.diff_minutes.toFixed(1) + " 分鐘）";
+          }
+          line.textContent =
+            "【" + res.location + "】模型預測日落：" + sunsetTime +
+            "（方位 " + sunsetAz + "）；你的相機最後看到太陽：" + obsTime + diffText;
+          box.classList.remove("hidden");
+        } catch (err) {
+          box.classList.add("hidden");
+        }
+      }
+
       async function loadSunsetDay() {
         const date = document.getElementById("sunset-day").value;
         const resultCard = document.getElementById("sunset-results");
@@ -1327,8 +1857,11 @@
 
         if (!date) {
           resultCard.classList.add("hidden");
+          document.getElementById("sunset-model-box").classList.add("hidden");
           return;
         }
+
+        loadSunsetModel(date);
 
         try {
           const info = await apiFetch("/api/day/" + date);
@@ -1397,12 +1930,12 @@
         }
       });
 
+      // -------------------- 多天比較 --------------------
       function renderCompareChart(days) {
         const container = document.getElementById("compare-chart");
         container.innerHTML = "";
         if (!days || days.length === 0) return;
 
-        const ns = "http://www.w3.org/2000/svg";
         const width = 760;
         const height = 280;
         const padL = 68;
@@ -1436,40 +1969,31 @@
           return padT + plotH - ((val - minY) / (maxY - minY)) * plotH;
         }
 
-        function makeEl(tag, attrs, text) {
-          const el = document.createElementNS(ns, tag);
-          for (const k in attrs) {
-            el.setAttribute(k, String(attrs[k]));
-          }
-          if (text !== undefined) el.textContent = text;
-          return el;
-        }
-
-        const svg = makeEl("svg", { viewBox: "0 0 " + width + " " + height });
+        const svg = makeSvgEl("svg", { viewBox: "0 0 " + width + " " + height });
 
         for (let i = 0; i <= 4; i++) {
           const v = minY + ((maxY - minY) * i) / 4;
           const y = yPos(v);
-          svg.appendChild(makeEl("line", {
+          svg.appendChild(makeSvgEl("line", {
             x1: padL, y1: y, x2: width - padR, y2: y,
             stroke: "#e2e8f0", "stroke-width": 1
           }));
-          svg.appendChild(makeEl("text", {
+          svg.appendChild(makeSvgEl("text", {
             x: padL - 8, y: y + 4,
             "text-anchor": "end", "font-size": 11, fill: "#475569"
           }, String(Math.round(v))));
         }
 
-        svg.appendChild(makeEl("line", {
+        svg.appendChild(makeSvgEl("line", {
           x1: padL, y1: padT, x2: padL, y2: padT + plotH,
           stroke: "#64748b", "stroke-width": 1.5
         }));
-        svg.appendChild(makeEl("line", {
+        svg.appendChild(makeSvgEl("line", {
           x1: padL, y1: padT + plotH, x2: width - padR, y2: padT + plotH,
           stroke: "#64748b", "stroke-width": 1.5
         }));
 
-        svg.appendChild(makeEl("text", {
+        svg.appendChild(makeSvgEl("text", {
           x: 16, y: padT + plotH / 2,
           transform: "rotate(-90 16 " + (padT + plotH / 2) + ")",
           "text-anchor": "middle", "font-size": 12, fill: "#1e3a6d", "font-weight": "bold"
@@ -1489,7 +2013,7 @@
         if (currentSeg.length >= 2) segments.push(currentSeg);
 
         segments.forEach(function (pts) {
-          svg.appendChild(makeEl("polyline", {
+          svg.appendChild(makeSvgEl("polyline", {
             points: pts.join(" "),
             fill: "none",
             stroke: "#e06b2b",
@@ -1504,7 +2028,7 @@
           const x = xPos(idx);
           if (idx % step === 0 || idx === days.length - 1) {
             const label = d.date && d.date.length === 8 ? (d.date.slice(4, 6) + "/" + d.date.slice(6, 8)) : d.date;
-            svg.appendChild(makeEl("text", {
+            svg.appendChild(makeSvgEl("text", {
               x: x, y: padT + plotH + 20,
               "text-anchor": "middle", "font-size": 11, fill: "#475569"
             }, label));
@@ -1513,15 +2037,15 @@
           const val = d.sun_x_1630;
           if (typeof val === "number" && !Number.isNaN(val)) {
             const y = yPos(val);
-            const circle = makeEl("circle", {
+            const circle = makeSvgEl("circle", {
               cx: x, cy: y, r: 5, fill: "#e06b2b", stroke: "#ffffff", "stroke-width": 2
             });
-            circle.appendChild(makeEl("title", {}, formatDate(d.date) + "：" + val.toFixed(1) + " 像素"));
+            circle.appendChild(makeSvgEl("title", {}, formatDate(d.date) + "：" + val.toFixed(1) + " 像素"));
             svg.appendChild(circle);
           }
         });
 
-        svg.appendChild(makeEl("text", {
+        svg.appendChild(makeSvgEl("text", {
           x: padL + plotW / 2, y: height - 10,
           "text-anchor": "middle", "font-size": 12, fill: "#1e3a6d", "font-weight": "bold"
         }, "日期"));
@@ -1535,6 +2059,7 @@
         try {
           const res = await apiFetch("/api/compare");
           const days = res.days || [];
+          const modelsMap = res.models || {};
           document.getElementById("compare-empty").classList.toggle("hidden", days.length > 0);
           renderCompareChart(days);
 
@@ -1548,6 +2073,16 @@
             const tdLast = document.createElement("td");
             tdLast.textContent = d.last_sun_time || "無資料";
             tr.appendChild(tdLast);
+
+            const tdModel = document.createElement("td");
+            const mod = modelsMap[d.date];
+            if (mod && mod.sunset) {
+              const azTxt = typeof mod.sunset_az === "number" ? ("（方位 " + mod.sunset_az.toFixed(1) + "°）") : "";
+              tdModel.textContent = mod.sunset + azTxt;
+            } else {
+              tdModel.textContent = "無資料";
+            }
+            tr.appendChild(tdModel);
 
             const tdPos = document.createElement("td");
             tdPos.textContent = d.sun_x_1630 !== null ? (Number(d.sun_x_1630).toFixed(1) + " 像素") : "無資料";
@@ -1577,6 +2112,1044 @@
 
       document.getElementById("btn-compare-reload").addEventListener("click", loadCompare);
 
+      // -------------------- 植物 --------------------
+      function updatePlantRoiLabel() {
+        const el = document.getElementById("plant-roi-info");
+        if (plantRoi) {
+          el.textContent = "已框選植物範圍：(" + plantRoi.x0 + ", " + plantRoi.y0 + ") 到 (" + plantRoi.x1 + ", " + plantRoi.y1 + ")";
+        } else {
+          el.textContent = "尚未框選植物範圍（預設計算整張照片的綠度）。";
+        }
+      }
+
+      function updatePlantStepHint() {
+        const el = document.getElementById("plant-step-hint");
+        if (plantMode === "roi") {
+          el.textContent = "目前模式：框選植物範圍。請在下方照片上按住並拖曳出長方形，把植物框起來。";
+          return;
+        }
+        const steps = [
+          "目前模式：量高度（第 1 步／共 4 步）→ 請點「尺的第一端」",
+          "目前模式：量高度（第 2 步／共 4 步）→ 請點「尺的第二端」（記得在上方填入尺的公分數）",
+          "目前模式：量高度（第 3 步／共 4 步）→ 請點「植物底部」",
+          "目前模式：量高度（第 4 步／共 4 步）→ 請點「植物頂端」",
+          "已完成量測！可以繼續選其他照片，或按「重新點選」再量一次。"
+        ];
+        el.textContent = steps[Math.min(plantClicks.length, 4)];
+      }
+
+      function setPlantMode(mode) {
+        plantMode = mode;
+        plantDragStart = null;
+        plantDragCurr = null;
+        plantClicks = [];
+        plantLastHeight = null;
+        document.getElementById("btn-plant-mode-roi").classList.toggle("active-mode", mode === "roi");
+        document.getElementById("btn-plant-mode-height").classList.toggle("active-mode", mode === "height");
+        updatePlantStepHint();
+        drawPlantCanvas();
+      }
+
+      document.getElementById("btn-plant-mode-roi").addEventListener("click", function () { setPlantMode("roi"); });
+      document.getElementById("btn-plant-mode-height").addEventListener("click", function () { setPlantMode("height"); });
+      document.getElementById("btn-plant-reset-pts").addEventListener("click", function () {
+        plantClicks = [];
+        plantLastHeight = null;
+        document.getElementById("plant-measure-info").textContent = "";
+        updatePlantStepHint();
+        drawPlantCanvas();
+      });
+
+      function drawPlantCanvas() {
+        const canvas = document.getElementById("plant-canvas");
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (plantImg && plantImg.complete && plantImg.naturalWidth > 0) {
+          ctx.drawImage(plantImg, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.fillStyle = "#1e293b";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "#cbd5e1";
+          ctx.font = "24px sans-serif";
+          ctx.fillText("請選擇日期與照片", 30, 60);
+          return;
+        }
+
+        const scale = Math.max(1, canvas.width / 800);
+
+        if (plantRoi) {
+          ctx.save();
+          ctx.strokeStyle = "#22c55e";
+          ctx.lineWidth = 3 * scale;
+          ctx.setLineDash([10 * scale, 6 * scale]);
+          ctx.strokeRect(plantRoi.x0, plantRoi.y0, plantRoi.x1 - plantRoi.x0, plantRoi.y1 - plantRoi.y0);
+          ctx.restore();
+        }
+
+        if (plantMode === "roi" && plantDragStart && plantDragCurr) {
+          const x0 = Math.min(plantDragStart[0], plantDragCurr[0]);
+          const y0 = Math.min(plantDragStart[1], plantDragCurr[1]);
+          const w = Math.abs(plantDragCurr[0] - plantDragStart[0]);
+          const h = Math.abs(plantDragCurr[1] - plantDragStart[1]);
+          ctx.save();
+          ctx.strokeStyle = "#facc15";
+          ctx.lineWidth = 3 * scale;
+          ctx.fillStyle = "rgba(250, 204, 21, 0.16)";
+          ctx.fillRect(x0, y0, w, h);
+          ctx.strokeRect(x0, y0, w, h);
+          ctx.restore();
+        }
+
+        const labels = ["尺1", "尺2", "植物底", "植物頂"];
+        const colors = ["#f59e0b", "#f59e0b", "#22c55e", "#22c55e"];
+        if (plantClicks.length >= 2) {
+          ctx.beginPath();
+          ctx.moveTo(plantClicks[0][0], plantClicks[0][1]);
+          ctx.lineTo(plantClicks[1][0], plantClicks[1][1]);
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 3.5 * scale;
+          ctx.stroke();
+        }
+        if (plantClicks.length >= 4) {
+          ctx.beginPath();
+          ctx.moveTo(plantClicks[2][0], plantClicks[2][1]);
+          ctx.lineTo(plantClicks[3][0], plantClicks[3][1]);
+          ctx.strokeStyle = "#22c55e";
+          ctx.lineWidth = 3.5 * scale;
+          ctx.stroke();
+        }
+        plantClicks.forEach(function (pt, idx) {
+          ctx.beginPath();
+          ctx.arc(pt[0], pt[1], 6 * scale, 0, Math.PI * 2);
+          ctx.fillStyle = colors[idx];
+          ctx.fill();
+          ctx.lineWidth = 2 * scale;
+          ctx.strokeStyle = "#ffffff";
+          ctx.stroke();
+          ctx.font = "bold " + Math.round(15 * scale) + "px sans-serif";
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(labels[idx], pt[0] + 10 * scale, pt[1] - 8 * scale);
+        });
+
+        if (plantLastHeight !== null && plantClicks.length === 4) {
+          const mx = (plantClicks[2][0] + plantClicks[3][0]) / 2;
+          const my = (plantClicks[2][1] + plantClicks[3][1]) / 2;
+          const text = plantLastHeight.toFixed(2) + " 公分";
+          ctx.font = "bold " + Math.round(20 * scale) + "px sans-serif";
+          const tw = ctx.measureText(text).width;
+          ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
+          ctx.fillRect(mx - tw / 2 - 8 * scale, my - 22 * scale, tw + 16 * scale, 30 * scale);
+          ctx.fillStyle = "#4ade80";
+          ctx.fillText(text, mx - tw / 2, my);
+        }
+      }
+
+      async function loadPlantDayPhotos() {
+        const date = document.getElementById("plant-day").value;
+        const photoSel = document.getElementById("plant-photo");
+        photoSel.innerHTML = "";
+        plantImg = null;
+        plantClicks = [];
+        plantLastHeight = null;
+        if (!date) {
+          drawPlantCanvas();
+          return;
+        }
+        try {
+          const info = await apiFetch("/api/day/" + date);
+          const normals = (info.photos || []).filter(function (p) { return p.kind === "normal"; });
+          if (!normals.length) {
+            const opt = document.createElement("option");
+            opt.value = "";
+            opt.textContent = "這一天沒有一般照片";
+            photoSel.appendChild(opt);
+            drawPlantCanvas();
+            return;
+          }
+          normals.forEach(function (p) {
+            const opt = document.createElement("option");
+            opt.value = p.name;
+            opt.textContent = p.time + "（" + p.name + "）";
+            photoSel.appendChild(opt);
+          });
+          photoSel.value = normals[Math.floor(normals.length / 2)].name;
+          loadPlantCanvasPhoto();
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      function loadPlantCanvasPhoto() {
+        const date = document.getElementById("plant-day").value;
+        const name = document.getElementById("plant-photo").value;
+        plantClicks = [];
+        plantLastHeight = null;
+        updatePlantStepHint();
+        if (!date || !name) {
+          plantImg = null;
+          drawPlantCanvas();
+          return;
+        }
+        const img = new Image();
+        img.onload = function () {
+          const canvas = document.getElementById("plant-canvas");
+          canvas.width = img.naturalWidth || 1600;
+          canvas.height = img.naturalHeight || 1200;
+          plantImg = img;
+          drawPlantCanvas();
+        };
+        img.src = "/photo/" + date + "/" + name;
+      }
+
+      document.getElementById("plant-day").addEventListener("change", loadPlantDayPhotos);
+      document.getElementById("plant-photo").addEventListener("change", loadPlantCanvasPhoto);
+
+      const plantCanvas = document.getElementById("plant-canvas");
+      plantCanvas.addEventListener("pointerdown", async function (ev) {
+        if (!plantImg) return;
+        const pt = canvasCoords(plantCanvas, ev);
+        if (plantMode === "roi") {
+          plantDragStart = pt;
+          plantDragCurr = pt;
+          plantCanvas.setPointerCapture(ev.pointerId);
+          drawPlantCanvas();
+          return;
+        }
+        if (plantClicks.length >= 4) {
+          plantClicks = [];
+          plantLastHeight = null;
+        }
+        plantClicks.push([Math.round(pt[0]), Math.round(pt[1])]);
+        updatePlantStepHint();
+        drawPlantCanvas();
+
+        if (plantClicks.length === 4) {
+          const date = document.getElementById("plant-day").value;
+          const name = document.getElementById("plant-photo").value;
+          const rulerCm = Number(document.getElementById("plant-ruler-cm").value);
+          try {
+            const res = await apiFetch("/api/plant/mark", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                date: date,
+                name: name,
+                ruler: [plantClicks[0], plantClicks[1]],
+                ruler_cm: rulerCm,
+                base: plantClicks[2],
+                top: plantClicks[3]
+              })
+            });
+            plantLastHeight = res.height_cm;
+            document.getElementById("plant-measure-info").textContent =
+              "已儲存量測結果：植物高度 " + res.height_cm.toFixed(2) + " 公分（比例尺 " + res.px_per_cm.toFixed(2) + " 像素／公分）";
+            drawPlantCanvas();
+            showMessage("量出植物高度約 " + res.height_cm.toFixed(2) + " 公分！", "ok");
+            loadPlantGrowth();
+          } catch (err) {
+            showMessage(err.message, "err");
+          }
+        }
+      });
+
+      plantCanvas.addEventListener("pointermove", function (ev) {
+        if (plantMode === "roi" && plantDragStart) {
+          plantDragCurr = canvasCoords(plantCanvas, ev);
+          drawPlantCanvas();
+        }
+      });
+
+      plantCanvas.addEventListener("pointerup", async function (ev) {
+        if (plantMode === "roi" && plantDragStart) {
+          plantDragCurr = canvasCoords(plantCanvas, ev);
+          const x0 = Math.max(0, Math.min(1599, Math.round(Math.min(plantDragStart[0], plantDragCurr[0]))));
+          const y0 = Math.max(0, Math.min(1199, Math.round(Math.min(plantDragStart[1], plantDragCurr[1]))));
+          const x1 = Math.max(x0 + 1, Math.min(1600, Math.round(Math.max(plantDragStart[0], plantDragCurr[0]))));
+          const y1 = Math.max(y0 + 1, Math.min(1200, Math.round(Math.max(plantDragStart[1], plantDragCurr[1]))));
+          plantDragStart = null;
+          plantDragCurr = null;
+          if (x1 - x0 < 5 || y1 - y0 < 5) {
+            drawPlantCanvas();
+            return;
+          }
+          try {
+            const res = await apiFetch("/api/plant/roi", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ x0: x0, y0: y0, x1: x1, y1: y1 })
+            });
+            plantRoi = res.roi;
+            updatePlantRoiLabel();
+            drawPlantCanvas();
+            showMessage("已儲存植物框選範圍！", "ok");
+            loadPlantGcc();
+          } catch (err) {
+            showMessage(err.message, "err");
+          }
+        }
+      });
+
+      function renderPlantGccChart(points) {
+        const container = document.getElementById("plant-gcc-chart");
+        container.innerHTML = "";
+        if (!points || points.length === 0) {
+          container.innerHTML = '<p class="hint">這個區間還沒有一般照片可以算綠度。</p>';
+          return;
+        }
+        const width = 760, height = 250, padL = 62, padR = 20, padT = 20, padB = 48;
+        const plotW = width - padL - padR, plotH = height - padT - padB;
+        const vals = points.map(function (p) { return p.gcc; });
+        let minY = Math.min.apply(null, vals), maxY = Math.max.apply(null, vals);
+        if (maxY - minY < 0.02) {
+          minY = Math.max(0, minY - 0.02);
+          maxY = Math.min(1, maxY + 0.02);
+        } else {
+          const pad = (maxY - minY) * 0.15;
+          minY = Math.max(0, minY - pad);
+          maxY = Math.min(1, maxY + pad);
+        }
+        function xPos(i) {
+          return points.length === 1 ? padL + plotW / 2 : padL + (plotW * i) / (points.length - 1);
+        }
+        function yPos(v) {
+          return padT + plotH - ((v - minY) / (maxY - minY)) * plotH;
+        }
+        const svg = makeSvgEl("svg", { viewBox: "0 0 " + width + " " + height });
+        for (let i = 0; i <= 4; i++) {
+          const v = minY + ((maxY - minY) * i) / 4;
+          const y = yPos(v);
+          svg.appendChild(makeSvgEl("line", { x1: padL, y1: y, x2: width - padR, y2: y, stroke: "#e2e8f0" }));
+          svg.appendChild(makeSvgEl("text", { x: padL - 8, y: y + 4, "text-anchor": "end", "font-size": 11, fill: "#475569" }, v.toFixed(3)));
+        }
+        svg.appendChild(makeSvgEl("line", { x1: padL, y1: padT, x2: padL, y2: padT + plotH, stroke: "#64748b", "stroke-width": 1.5 }));
+        svg.appendChild(makeSvgEl("line", { x1: padL, y1: padT + plotH, x2: width - padR, y2: padT + plotH, stroke: "#64748b", "stroke-width": 1.5 }));
+        svg.appendChild(makeSvgEl("text", {
+          x: 15, y: padT + plotH / 2,
+          transform: "rotate(-90 15 " + (padT + plotH / 2) + ")",
+          "text-anchor": "middle", "font-size": 12, fill: "#166534", "font-weight": "bold"
+        }, "綠度（GCC）"));
+
+        const polyPts = points.map(function (p, i) { return xPos(i).toFixed(1) + "," + yPos(p.gcc).toFixed(1); });
+        if (polyPts.length >= 2) {
+          svg.appendChild(makeSvgEl("polyline", { points: polyPts.join(" "), fill: "none", stroke: "#16a34a", "stroke-width": 2.5 }));
+        }
+        const step = Math.max(1, Math.ceil(points.length / 7));
+        points.forEach(function (p, i) {
+          const x = xPos(i), y = yPos(p.gcc);
+          if (i % step === 0 || i === points.length - 1) {
+            const lbl = p.date.slice(4, 6) + "/" + p.date.slice(6, 8) + " " + p.time.slice(0, 5);
+            svg.appendChild(makeSvgEl("text", { x: x, y: padT + plotH + 18, "text-anchor": "middle", "font-size": 10, fill: "#475569" }, lbl));
+          }
+          if (points.length <= 120) {
+            const c = makeSvgEl("circle", { cx: x, cy: y, r: 3.5, fill: "#16a34a" });
+            c.appendChild(makeSvgEl("title", {}, formatDate(p.date) + " " + p.time + "：GCC " + p.gcc.toFixed(4)));
+            svg.appendChild(c);
+          }
+        });
+        container.appendChild(svg);
+      }
+
+      async function loadPlantGcc() {
+        const fromD = document.getElementById("plant-gcc-from").value;
+        const toD = document.getElementById("plant-gcc-to").value;
+        if (!fromD || !toD) {
+          renderPlantGccChart([]);
+          return;
+        }
+        const f = fromD <= toD ? fromD : toD;
+        const t = fromD <= toD ? toD : fromD;
+        try {
+          const res = await apiFetch("/api/plant/gcc?from=" + f + "&to=" + t);
+          renderPlantGccChart(res.points || []);
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      document.getElementById("btn-plant-gcc").addEventListener("click", loadPlantGcc);
+
+      function parseDateNameDays(dateStr, nameStr) {
+        const y = Number(dateStr.slice(0, 4));
+        const m = Number(dateStr.slice(4, 6)) - 1;
+        const d = Number(dateStr.slice(6, 8));
+        const hh = Number(nameStr.slice(0, 2)) || 0;
+        const mm = Number(nameStr.slice(2, 4)) || 0;
+        const ss = Number(nameStr.slice(4, 6)) || 0;
+        return Date.UTC(y, m, d, hh, mm, ss) / 86400000;
+      }
+
+      function renderPlantGrowthChart(points, fit) {
+        const container = document.getElementById("plant-growth-chart");
+        container.innerHTML = "";
+        if (!points || points.length === 0) {
+          container.innerHTML = '<p class="hint">還沒有植物高度紀錄，請切換到「量高度」模式在照片上標記。</p>';
+          return;
+        }
+        const width = 760, height = 260, padL = 62, padR = 24, padT = 22, padB = 48;
+        const plotW = width - padL - padR, plotH = height - padT - padB;
+        const t0Abs = parseDateNameDays(points[0].date, points[0].name);
+        const ts = points.map(function (p) { return parseDateNameDays(p.date, p.name) - t0Abs; });
+        const maxT = Math.max(1, Math.max.apply(null, ts));
+        let maxY = Math.max.apply(null, points.map(function (p) { return p.height_cm; }));
+        if (fit && typeof fit.K === "number" && fit.K > maxY) {
+          maxY = fit.K;
+        }
+        maxY = Math.max(1, maxY * 1.15);
+
+        function xPos(t) { return padL + (plotW * t) / maxT; }
+        function yPos(v) { return padT + plotH - (v / maxY) * plotH; }
+
+        const svg = makeSvgEl("svg", { viewBox: "0 0 " + width + " " + height });
+        for (let i = 0; i <= 4; i++) {
+          const v = (maxY * i) / 4;
+          const y = yPos(v);
+          svg.appendChild(makeSvgEl("line", { x1: padL, y1: y, x2: width - padR, y2: y, stroke: "#e2e8f0" }));
+          svg.appendChild(makeSvgEl("text", { x: padL - 8, y: y + 4, "text-anchor": "end", "font-size": 11, fill: "#475569" }, v.toFixed(1)));
+        }
+        svg.appendChild(makeSvgEl("line", { x1: padL, y1: padT, x2: padL, y2: padT + plotH, stroke: "#64748b", "stroke-width": 1.5 }));
+        svg.appendChild(makeSvgEl("line", { x1: padL, y1: padT + plotH, x2: width - padR, y2: padT + plotH, stroke: "#64748b", "stroke-width": 1.5 }));
+        svg.appendChild(makeSvgEl("text", {
+          x: 15, y: padT + plotH / 2,
+          transform: "rotate(-90 15 " + (padT + plotH / 2) + ")",
+          "text-anchor": "middle", "font-size": 12, fill: "#1e3a6d", "font-weight": "bold"
+        }, "植物高度（公分）"));
+
+        if (fit && typeof fit.K === "number" && typeof fit.r === "number" && typeof fit.t0 === "number") {
+          const curvePts = [];
+          const steps = 60;
+          for (let i = 0; i <= steps; i++) {
+            const t = (maxT * i) / steps;
+            const yVal = fit.K / (1 + Math.exp(-fit.r * (t - fit.t0)));
+            curvePts.push(xPos(t).toFixed(1) + "," + yPos(yVal).toFixed(1));
+          }
+          svg.appendChild(makeSvgEl("polyline", {
+            points: curvePts.join(" "),
+            fill: "none",
+            stroke: "#e06b2b",
+            "stroke-width": 2.5,
+            "stroke-dasharray": "7 5"
+          }));
+        }
+
+        if (points.length >= 2) {
+          const obsPts = points.map(function (p, i) { return xPos(ts[i]).toFixed(1) + "," + yPos(p.height_cm).toFixed(1); });
+          svg.appendChild(makeSvgEl("polyline", { points: obsPts.join(" "), fill: "none", stroke: "#2563eb", "stroke-width": 2.5 }));
+        }
+        points.forEach(function (p, i) {
+          const x = xPos(ts[i]), y = yPos(p.height_cm);
+          const c = makeSvgEl("circle", { cx: x, cy: y, r: 5, fill: "#2563eb", stroke: "#ffffff", "stroke-width": 2 });
+          c.appendChild(makeSvgEl("title", {}, formatDate(p.date) + "（第 " + ts[i].toFixed(1) + " 天）：" + p.height_cm.toFixed(2) + " 公分"));
+          svg.appendChild(c);
+          svg.appendChild(makeSvgEl("text", { x: x, y: padT + plotH + 18, "text-anchor": "middle", "font-size": 10, fill: "#475569" }, "第" + ts[i].toFixed(0) + "天"));
+        });
+        svg.appendChild(makeSvgEl("text", { x: padL + plotW / 2, y: height - 8, "text-anchor": "middle", "font-size": 12, fill: "#1e3a6d", "font-weight": "bold" }, "距第一天的天數"));
+        container.appendChild(svg);
+      }
+
+      async function loadPlantGrowth() {
+        try {
+          const res = await apiFetch("/api/plant/growth");
+          const noteEl = document.getElementById("plant-fit-note");
+          if (res.fit) {
+            noteEl.textContent = "最多長到約 " + res.fit.K.toFixed(1) + " 公分、長最快的是第 " + res.fit.t0.toFixed(1) + " 天（" + res.fit_note + "）";
+          } else {
+            noteEl.textContent = res.fit_note || "資料少於 4 天，還不能畫生長曲線";
+          }
+          renderPlantGrowthChart(res.points || [], res.fit);
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      document.getElementById("btn-plant-growth-reload").addEventListener("click", loadPlantGrowth);
+
+      // -------------------- 月亮 --------------------
+      function renderMoonPhaseSvg(container, fraction, waxing) {
+        container.innerHTML = "";
+        const svg = makeSvgEl("svg", { viewBox: "0 0 100 100", width: 96, height: 96 });
+        const cx = 50, cy = 50, r = 42;
+        svg.appendChild(makeSvgEl("circle", { cx: cx, cy: cy, r: r, fill: "#1e293b", stroke: "#64748b", "stroke-width": 1.5 }));
+
+        const frac = Math.max(0, Math.min(1, Number(fraction) || 0));
+        if (frac >= 0.995) {
+          svg.appendChild(makeSvgEl("circle", { cx: cx, cy: cy, r: r, fill: "#fde047" }));
+        } else if (frac > 0.005) {
+          const rx = Math.abs(2 * frac - 1) * r;
+          const outerSweep = waxing ? 1 : 0;
+          let termSweep;
+          if (waxing) {
+            termSweep = frac < 0.5 ? 0 : 1;
+          } else {
+            termSweep = frac < 0.5 ? 1 : 0;
+          }
+          let d;
+          if (rx < 0.5) {
+            d = "M " + cx + " " + (cy - r) +
+                " A " + r + " " + r + " 0 0 " + outerSweep + " " + cx + " " + (cy + r) +
+                " L " + cx + " " + (cy - r) + " Z";
+          } else {
+            d = "M " + cx + " " + (cy - r) +
+                " A " + r + " " + r + " 0 0 " + outerSweep + " " + cx + " " + (cy + r) +
+                " A " + rx.toFixed(2) + " " + r + " 0 0 " + termSweep + " " + cx + " " + (cy - r) + " Z";
+          }
+          svg.appendChild(makeSvgEl("path", { d: d, fill: "#fde047" }));
+        }
+        container.appendChild(svg);
+      }
+
+      async function loadMoonDay() {
+        const date = document.getElementById("moon-day").value;
+        const tbody = document.getElementById("moon-day-tbody");
+        tbody.innerHTML = "";
+        if (!date) {
+          document.getElementById("moon-day-empty").classList.remove("hidden");
+          renderMoonPhaseSvg(document.getElementById("moon-phase-svg"), 0.5, true);
+          return;
+        }
+        try {
+          const res = await apiFetch("/api/moon/day/" + date);
+          const s = res.summary || {};
+          const ev = res.events || {};
+          document.getElementById("moon-phase-name").textContent = s.phase_name || "-";
+          document.getElementById("moon-fraction").textContent =
+            typeof s.fraction === "number" ? (Math.round(s.fraction * 100) + "%（" + s.fraction.toFixed(3) + "）") : "-";
+          document.getElementById("moon-rise").textContent = ev.moonrise || "無";
+          document.getElementById("moon-set").textContent = ev.moonset || "無";
+          document.getElementById("moon-found-count").textContent = String(s.photos || 0) + " 張／拍到 " + String(s.found || 0) + " 張";
+          renderMoonPhaseSvg(document.getElementById("moon-phase-svg"), s.fraction, res.waxing !== false);
+
+          const photos = res.photos || [];
+          document.getElementById("moon-day-empty").classList.toggle("hidden", photos.length > 0);
+          photos.forEach(function (p) {
+            const tr = document.createElement("tr");
+            const posText = p.found
+              ? ("(" + p.x + ", " + p.y + ")，最亮 " + p.peak)
+              : ("未找到（最亮 " + p.peak + "）");
+            [
+              p.time,
+              p.found ? "有拍到" : "沒有",
+              posText,
+              "高度 " + Number(p.model_alt).toFixed(1) + "° ／ 方位 " + Number(p.model_az).toFixed(1) + "°",
+              Math.round(Number(p.fraction) * 100) + "%（" + p.phase_name + "）"
+            ].forEach(function (txt) {
+              const td = document.createElement("td");
+              td.textContent = txt;
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      async function loadMoonCalendar() {
+        const tbody = document.getElementById("moon-cal-tbody");
+        tbody.innerHTML = "";
+        try {
+          const res = await apiFetch("/api/moon/calendar?days=30");
+          (res.days || []).forEach(function (d) {
+            const tr = document.createElement("tr");
+
+            const tdDate = document.createElement("td");
+            tdDate.textContent = formatDate(d.date);
+            tr.appendChild(tdDate);
+
+            const tdPhase = document.createElement("td");
+            tdPhase.textContent = d.phase_name;
+            tr.appendChild(tdPhase);
+
+            const tdFrac = document.createElement("td");
+            tdFrac.textContent = Math.round(Number(d.fraction) * 100) + "%";
+            tr.appendChild(tdFrac);
+
+            const tdRise = document.createElement("td");
+            tdRise.textContent = d.moonrise || "-";
+            tr.appendChild(tdRise);
+
+            const tdSet = document.createElement("td");
+            tdSet.textContent = d.moonset || "-";
+            tr.appendChild(tdSet);
+
+            const tdWest = document.createElement("td");
+            if (d.evening_west) {
+              const tag = document.createElement("span");
+              tag.className = "star-tag";
+              tag.textContent = "★ 傍晚西方看得到";
+              tdWest.appendChild(tag);
+            } else {
+              tdWest.textContent = "-";
+            }
+            tr.appendChild(tdWest);
+
+            tbody.appendChild(tr);
+          });
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      document.getElementById("moon-day").addEventListener("change", loadMoonDay);
+      document.getElementById("btn-moon-reload").addEventListener("click", loadMoonDay);
+      document.getElementById("btn-moon-cal-reload").addEventListener("click", loadMoonCalendar);
+
+      // -------------------- 雲量 --------------------
+      function updateCloudHorizonLabel() {
+        const el = document.getElementById("cloud-horizon-info");
+        if (cloudHorizonY === null || cloudHorizonY === undefined) {
+          el.textContent = "目前地平線：未設定（整張照片都算天空）。";
+        } else {
+          el.textContent = "目前地平線：y = " + cloudHorizonY + " 像素（紅線以上才算天空）。";
+        }
+      }
+
+      function drawCloudCanvas() {
+        const canvas = document.getElementById("cloud-canvas");
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (cloudImg && cloudImg.complete && cloudImg.naturalWidth > 0) {
+          ctx.drawImage(cloudImg, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.fillStyle = "#1e293b";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "#cbd5e1";
+          ctx.font = "24px sans-serif";
+          ctx.fillText("請選擇有一般照片的日期", 30, 60);
+          return;
+        }
+
+        const scale = Math.max(1, canvas.width / 800);
+        if (cloudHorizonY !== null && cloudHorizonY !== undefined) {
+          const hy = Math.max(0, Math.min(canvas.height, cloudHorizonY));
+          ctx.fillStyle = "rgba(15, 23, 42, 0.42)";
+          ctx.fillRect(0, hy, canvas.width, canvas.height - hy);
+
+          ctx.beginPath();
+          ctx.moveTo(0, hy);
+          ctx.lineTo(canvas.width, hy);
+          ctx.strokeStyle = "#ef4444";
+          ctx.lineWidth = 4 * scale;
+          ctx.stroke();
+
+          ctx.font = "bold " + Math.round(18 * scale) + "px sans-serif";
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText("▲ 以上算天空（地平線 y=" + hy + "）", 16 * scale, Math.max(26 * scale, hy - 12 * scale));
+        }
+      }
+
+      const cloudCanvas = document.getElementById("cloud-canvas");
+      cloudCanvas.addEventListener("pointerdown", function (ev) {
+        if (!cloudImg) return;
+        cloudDragging = true;
+        cloudCanvas.setPointerCapture(ev.pointerId);
+        const pt = canvasCoords(cloudCanvas, ev);
+        cloudHorizonY = Math.max(0, Math.min(1199, Math.round(pt[1])));
+        updateCloudHorizonLabel();
+        drawCloudCanvas();
+      });
+
+      cloudCanvas.addEventListener("pointermove", function (ev) {
+        if (!cloudDragging || !cloudImg) return;
+        const pt = canvasCoords(cloudCanvas, ev);
+        cloudHorizonY = Math.max(0, Math.min(1199, Math.round(pt[1])));
+        updateCloudHorizonLabel();
+        drawCloudCanvas();
+      });
+
+      cloudCanvas.addEventListener("pointerup", async function () {
+        if (!cloudDragging) return;
+        cloudDragging = false;
+        await saveCloudSettingsAndReload();
+      });
+
+      document.getElementById("cloud-threshold").addEventListener("input", function () {
+        document.getElementById("cloud-threshold-val").textContent = Number(this.value).toFixed(2);
+      });
+
+      async function saveCloudSettingsAndReload() {
+        const th = Number(document.getElementById("cloud-threshold").value);
+        try {
+          await apiFetch("/api/cloud/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ horizon_y: cloudHorizonY, threshold: th })
+          });
+          showMessage("已更新雲量設定並重新計算！", "ok");
+          await loadCloudChart();
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      document.getElementById("btn-cloud-save").addEventListener("click", saveCloudSettingsAndReload);
+      document.getElementById("btn-cloud-clear-horizon").addEventListener("click", async function () {
+        cloudHorizonY = null;
+        updateCloudHorizonLabel();
+        drawCloudCanvas();
+        await saveCloudSettingsAndReload();
+      });
+
+      function timeToHours(tStr) {
+        const parts = String(tStr || "0:0:0").split(":");
+        return (Number(parts[0]) || 0) + (Number(parts[1]) || 0) / 60 + (Number(parts[2]) || 0) / 3600;
+      }
+
+      function renderCloudChart(points, reference) {
+        const container = document.getElementById("cloud-chart");
+        container.innerHTML = "";
+        if ((!points || !points.length) && (!reference || !reference.length)) {
+          container.innerHTML = '<p class="hint">這一天沒有資料可以繪製雲量圖。</p>';
+          return;
+        }
+        const width = 760, height = 270, padL = 56, padR = 24, padT = 30, padB = 48;
+        const plotW = width - padL - padR, plotH = height - padT - padB;
+        function xPos(h) { return padL + (plotW * Math.max(0, Math.min(24, h))) / 24; }
+        function yPos(pct) { return padT + plotH - (Math.max(0, Math.min(100, pct)) / 100) * plotH; }
+
+        const svg = makeSvgEl("svg", { viewBox: "0 0 " + width + " " + height });
+
+        svg.appendChild(makeSvgEl("line", { x1: padL, y1: 14, x2: padL + 26, y2: 14, stroke: "#2563eb", "stroke-width": 3 }));
+        svg.appendChild(makeSvgEl("text", { x: padL + 32, y: 18, "font-size": 12, fill: "#1e3a6d" }, "相機算的雲量（實線）"));
+        svg.appendChild(makeSvgEl("line", { x1: padL + 185, y1: 14, x2: padL + 211, y2: 14, stroke: "#e06b2b", "stroke-width": 3, "stroke-dasharray": "6 4" }));
+        svg.appendChild(makeSvgEl("text", { x: padL + 217, y: 18, "font-size": 12, fill: "#9a3412" }, "天氣模型預報雲量（虛線，模型推算）"));
+
+        for (let p = 0; p <= 100; p += 25) {
+          const y = yPos(p);
+          svg.appendChild(makeSvgEl("line", { x1: padL, y1: y, x2: width - padR, y2: y, stroke: "#e2e8f0" }));
+          svg.appendChild(makeSvgEl("text", { x: padL - 8, y: y + 4, "text-anchor": "end", "font-size": 11, fill: "#475569" }, p + "%"));
+        }
+        for (let h = 0; h <= 24; h += 3) {
+          const x = xPos(h);
+          svg.appendChild(makeSvgEl("line", { x1: x, y1: padT, x2: x, y2: padT + plotH, stroke: "#f1f5f9" }));
+          svg.appendChild(makeSvgEl("text", { x: x, y: padT + plotH + 18, "text-anchor": "middle", "font-size": 11, fill: "#475569" }, String(h).padStart(2, "0") + ":00"));
+        }
+        svg.appendChild(makeSvgEl("line", { x1: padL, y1: padT, x2: padL, y2: padT + plotH, stroke: "#64748b", "stroke-width": 1.5 }));
+        svg.appendChild(makeSvgEl("line", { x1: padL, y1: padT + plotH, x2: width - padR, y2: padT + plotH, stroke: "#64748b", "stroke-width": 1.5 }));
+
+        if (reference && reference.length >= 2) {
+          const refPts = reference.map(function (r) {
+            return xPos(timeToHours(r.hour)).toFixed(1) + "," + yPos(Number(r.cloud_cover)).toFixed(1);
+          });
+          svg.appendChild(makeSvgEl("polyline", {
+            points: refPts.join(" "),
+            fill: "none",
+            stroke: "#e06b2b",
+            "stroke-width": 2.5,
+            "stroke-dasharray": "7 5"
+          }));
+        }
+
+        if (points && points.length >= 1) {
+          const camPts = points.map(function (pt) {
+            return xPos(timeToHours(pt.time)).toFixed(1) + "," + yPos(Number(pt.cloud_fraction) * 100).toFixed(1);
+          });
+          if (camPts.length >= 2) {
+            svg.appendChild(makeSvgEl("polyline", { points: camPts.join(" "), fill: "none", stroke: "#2563eb", "stroke-width": 2.8 }));
+          }
+          if (points.length <= 120) {
+            points.forEach(function (pt) {
+              const c = makeSvgEl("circle", {
+                cx: xPos(timeToHours(pt.time)),
+                cy: yPos(Number(pt.cloud_fraction) * 100),
+                r: 3.2,
+                fill: "#2563eb"
+              });
+              c.appendChild(makeSvgEl("title", {}, pt.time + "：相機雲量 " + Math.round(pt.cloud_fraction * 100) + "%"));
+              svg.appendChild(c);
+            });
+          }
+        }
+        container.appendChild(svg);
+      }
+
+      async function loadCloudChart() {
+        const date = document.getElementById("cloud-day").value;
+        if (!date) {
+          renderCloudChart([], []);
+          return;
+        }
+        try {
+          const res = await apiFetch("/api/cloud/day/" + date);
+          document.getElementById("cloud-ref-note").textContent =
+            "提醒：" + (res.reference_note || "虛線是天氣模型算的，不是實際觀測。");
+          renderCloudChart(res.points || [], res.reference || []);
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      async function loadCloudDayAll() {
+        const date = document.getElementById("cloud-day").value;
+        const photoSel = document.getElementById("cloud-photo");
+        photoSel.innerHTML = "";
+        cloudImg = null;
+        if (!date) {
+          drawCloudCanvas();
+          renderCloudChart([], []);
+          return;
+        }
+        try {
+          const info = await apiFetch("/api/day/" + date);
+          const normals = (info.photos || []).filter(function (p) { return p.kind === "normal"; });
+          if (normals.length) {
+            normals.forEach(function (p) {
+              const opt = document.createElement("option");
+              opt.value = p.name;
+              opt.textContent = p.time + "（" + p.name + "）";
+              photoSel.appendChild(opt);
+            });
+            photoSel.value = normals[Math.floor(normals.length / 2)].name;
+            loadCloudCanvasPhoto();
+          } else {
+            drawCloudCanvas();
+          }
+          await loadCloudChart();
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      function loadCloudCanvasPhoto() {
+        const date = document.getElementById("cloud-day").value;
+        const name = document.getElementById("cloud-photo").value;
+        if (!date || !name) {
+          cloudImg = null;
+          drawCloudCanvas();
+          return;
+        }
+        const img = new Image();
+        img.onload = function () {
+          const canvas = document.getElementById("cloud-canvas");
+          canvas.width = img.naturalWidth || 1600;
+          canvas.height = img.naturalHeight || 1200;
+          cloudImg = img;
+          drawCloudCanvas();
+        };
+        img.src = "/photo/" + date + "/" + name;
+      }
+
+      document.getElementById("cloud-day").addEventListener("change", loadCloudDayAll);
+      document.getElementById("cloud-photo").addEventListener("change", loadCloudCanvasPhoto);
+      document.getElementById("btn-cloud-reload").addEventListener("click", loadCloudChart);
+
+      // -------------------- 影子 --------------------
+      function updateShadowStepHint() {
+        const steps = [
+          "第 1 步／共 4 步：請點「尺的第一端」",
+          "第 2 步／共 4 步：請點「尺的第二端」",
+          "第 3 步／共 4 步：請點「棒子底部」",
+          "第 4 步／共 4 步：請點「影子尖端」",
+          "已完成量測並儲存！可以換下一張照片，或按「重新點選」。"
+        ];
+        document.getElementById("shadow-step-hint").textContent = steps[Math.min(shadowClicks.length, 4)];
+      }
+
+      function drawShadowCanvas() {
+        const canvas = document.getElementById("shadow-canvas");
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (shadowImg && shadowImg.complete && shadowImg.naturalWidth > 0) {
+          ctx.drawImage(shadowImg, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.fillStyle = "#1e293b";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "#cbd5e1";
+          ctx.font = "24px sans-serif";
+          ctx.fillText("請選擇日期與照片", 30, 60);
+          return;
+        }
+
+        const scale = Math.max(1, canvas.width / 800);
+        const labels = ["尺1", "尺2", "棒底", "影尖"];
+        const colors = ["#f59e0b", "#f59e0b", "#38bdf8", "#38bdf8"];
+
+        if (shadowClicks.length >= 2) {
+          ctx.beginPath();
+          ctx.moveTo(shadowClicks[0][0], shadowClicks[0][1]);
+          ctx.lineTo(shadowClicks[1][0], shadowClicks[1][1]);
+          ctx.strokeStyle = "#f59e0b";
+          ctx.lineWidth = 3.5 * scale;
+          ctx.stroke();
+        }
+        if (shadowClicks.length >= 4) {
+          ctx.beginPath();
+          ctx.moveTo(shadowClicks[2][0], shadowClicks[2][1]);
+          ctx.lineTo(shadowClicks[3][0], shadowClicks[3][1]);
+          ctx.strokeStyle = "#38bdf8";
+          ctx.lineWidth = 3.5 * scale;
+          ctx.stroke();
+        }
+        shadowClicks.forEach(function (pt, idx) {
+          ctx.beginPath();
+          ctx.arc(pt[0], pt[1], 6 * scale, 0, Math.PI * 2);
+          ctx.fillStyle = colors[idx];
+          ctx.fill();
+          ctx.lineWidth = 2 * scale;
+          ctx.strokeStyle = "#ffffff";
+          ctx.stroke();
+          ctx.font = "bold " + Math.round(15 * scale) + "px sans-serif";
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(labels[idx], pt[0] + 10 * scale, pt[1] - 8 * scale);
+        });
+      }
+
+      async function loadShadowDayPhotos() {
+        const date = document.getElementById("shadow-day").value;
+        const photoSel = document.getElementById("shadow-photo");
+        photoSel.innerHTML = "";
+        shadowImg = null;
+        shadowClicks = [];
+        updateShadowStepHint();
+        if (!date) {
+          drawShadowCanvas();
+          return;
+        }
+        try {
+          const info = await apiFetch("/api/day/" + date);
+          const normals = (info.photos || []).filter(function (p) { return p.kind === "normal"; });
+          if (!normals.length) {
+            const opt = document.createElement("option");
+            opt.value = "";
+            opt.textContent = "這一天沒有一般照片";
+            photoSel.appendChild(opt);
+            drawShadowCanvas();
+            return;
+          }
+          normals.forEach(function (p) {
+            const opt = document.createElement("option");
+            opt.value = p.name;
+            opt.textContent = p.time + "（" + p.name + "）";
+            photoSel.appendChild(opt);
+          });
+          photoSel.value = normals[Math.floor(normals.length / 2)].name;
+          loadShadowCanvasPhoto();
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      function loadShadowCanvasPhoto() {
+        const date = document.getElementById("shadow-day").value;
+        const name = document.getElementById("shadow-photo").value;
+        shadowClicks = [];
+        updateShadowStepHint();
+        if (!date || !name) {
+          shadowImg = null;
+          drawShadowCanvas();
+          return;
+        }
+        const img = new Image();
+        img.onload = function () {
+          const canvas = document.getElementById("shadow-canvas");
+          canvas.width = img.naturalWidth || 1600;
+          canvas.height = img.naturalHeight || 1200;
+          shadowImg = img;
+          drawShadowCanvas();
+        };
+        img.src = "/photo/" + date + "/" + name;
+      }
+
+      document.getElementById("shadow-day").addEventListener("change", loadShadowDayPhotos);
+      document.getElementById("shadow-photo").addEventListener("change", loadShadowCanvasPhoto);
+      document.getElementById("btn-shadow-reset").addEventListener("click", function () {
+        shadowClicks = [];
+        updateShadowStepHint();
+        drawShadowCanvas();
+      });
+
+      const shadowCanvas = document.getElementById("shadow-canvas");
+      shadowCanvas.addEventListener("pointerdown", async function (ev) {
+        if (!shadowImg) return;
+        if (shadowClicks.length >= 4) shadowClicks = [];
+        const pt = canvasCoords(shadowCanvas, ev);
+        shadowClicks.push([Math.round(pt[0]), Math.round(pt[1])]);
+        updateShadowStepHint();
+        drawShadowCanvas();
+
+        if (shadowClicks.length === 4) {
+          const date = document.getElementById("shadow-day").value;
+          const name = document.getElementById("shadow-photo").value;
+          const rulerCm = Number(document.getElementById("shadow-ruler-cm").value);
+          const stickCm = Number(document.getElementById("shadow-stick-cm").value);
+          try {
+            const res = await apiFetch("/api/shadow/mark", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                date: date,
+                name: name,
+                ruler: [shadowClicks[0], shadowClicks[1]],
+                ruler_cm: rulerCm,
+                base: shadowClicks[2],
+                tip: shadowClicks[3],
+                stick_cm: stickCm
+              })
+            });
+            document.getElementById("shadow-result-grid").classList.remove("hidden");
+            document.getElementById("sh-len").textContent = res.shadow_cm.toFixed(2) + " 公分";
+            document.getElementById("sh-alt-obs").textContent = res.altitude_measured.toFixed(2) + "°";
+            document.getElementById("sh-alt-mod").textContent = res.altitude_model.toFixed(2) + "°";
+            const sign = res.diff > 0 ? "+" : "";
+            document.getElementById("sh-diff").textContent = sign + res.diff.toFixed(2) + "°";
+            document.getElementById("sh-exp").textContent =
+              res.expected_shadow_cm !== null ? (res.expected_shadow_cm.toFixed(2) + " 公分") : "太陽在地平線下";
+            showMessage("已完成立竿影子量測並儲存！", "ok");
+            loadShadowList();
+          } catch (err) {
+            showMessage(err.message, "err");
+          }
+        }
+      });
+
+      async function loadShadowList() {
+        const tbody = document.getElementById("shadow-tbody");
+        tbody.innerHTML = "";
+        try {
+          const res = await apiFetch("/api/shadow/list");
+          const marks = res.marks || [];
+          const cmp = res.compare || {};
+          document.getElementById("sh-cmp-n").textContent = String(cmp.n || 0);
+          document.getElementById("sh-cmp-mean").textContent =
+            typeof cmp.mean_diff === "number" ? (cmp.mean_diff.toFixed(2) + "°") : "-";
+          document.getElementById("sh-cmp-mae").textContent =
+            typeof cmp.mean_abs_diff === "number" ? (cmp.mean_abs_diff.toFixed(2) + "°") : "-";
+          document.getElementById("sh-cmp-max").textContent =
+            typeof cmp.max_abs_diff === "number" ? (cmp.max_abs_diff.toFixed(2) + "°") : "-";
+
+          document.getElementById("shadow-empty").classList.toggle("hidden", marks.length > 0);
+          marks.forEach(function (m) {
+            const tr = document.createElement("tr");
+            const diffTxt = (m.diff > 0 ? "+" : "") + Number(m.diff).toFixed(2) + "°";
+            const expTxt = m.expected_shadow_cm !== null && m.expected_shadow_cm !== undefined
+              ? (Number(m.expected_shadow_cm).toFixed(2) + " 公分")
+              : "太陽在地平線下";
+            [
+              formatDate(m.date),
+              m.time || "",
+              Number(m.stick_cm).toFixed(1),
+              Number(m.shadow_cm).toFixed(2),
+              Number(m.altitude_measured).toFixed(2) + "°",
+              Number(m.altitude_model).toFixed(2) + "°",
+              diffTxt,
+              expTxt
+            ].forEach(function (txt) {
+              const td = document.createElement("td");
+              td.textContent = txt;
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+        } catch (err) {
+          showMessage(err.message, "err");
+        }
+      }
+
+      document.getElementById("btn-shadow-list-reload").addEventListener("click", loadShadowList);
+
+      // -------------------- 分享給老師 --------------------
       async function loadShareLog() {
         const tbody = document.getElementById("share-log-tbody");
         tbody.innerHTML = "";
@@ -1643,6 +3216,7 @@
         }
       });
 
+      // -------------------- 相機設定 --------------------
       document.getElementById("btn-apply-config").addEventListener("click", async function () {
         const payload = {
           flip: document.getElementById("cfg-flip").checked ? 1 : 0,
@@ -1666,7 +3240,7 @@
         }
       });
 
-      initCountySelect();
+      initCountySelects();
       loadState();
     })();
   </script>
